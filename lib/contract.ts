@@ -29,3 +29,15 @@ export const erc20Abi = [
     inputs: [{ name: 'account', type: 'address' }], outputs: [{ type: 'uint256' }] },
   { name: 'decimals', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint8' }] },
 ] as const;
+
+export type HeirInput = { wallet: `0x${string}`; bps: number };
+
+// Write calls used by the UI (fed to hooks/useTxFlow).
+export const calls = {
+  approve: (amount: bigint) =>
+    ({ address: USDC_ADDRESS, abi: erc20Abi, functionName: 'approve', args: [GUARD_ADDRESS, amount] }) as const,
+  setupGuard: (token: `0x${string}`, timeoutSeconds: bigint, heirs: HeirInput[]) =>
+    ({ address: GUARD_ADDRESS, abi: guardAbi, functionName: 'setupGuard', args: [token, timeoutSeconds, heirs] }) as const,
+  ping: () => ({ address: GUARD_ADDRESS, abi: guardAbi, functionName: 'ping', args: [] }) as const,
+  revokeGuard: () => ({ address: GUARD_ADDRESS, abi: guardAbi, functionName: 'revokeGuard', args: [] }) as const,
+};

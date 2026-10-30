@@ -84,7 +84,10 @@ export async function POST(req: Request) {
   if (!body.success) {
     return NextResponse.json({ error: 'Invalid request body', issues: body.error.flatten() }, { status: 400 });
   }
-  const { txHash, beneficiaries: input } = body.data;
+  const { chainId, txHash, beneficiaries: input } = body.data;
+  if (chainId !== chain.id) {
+    return NextResponse.json({ error: `Wrong network: expected chain ${chain.id}` }, { status: 400 });
+  }
 
   try {
     const receipt = await publicClient.getTransactionReceipt({ hash: txHash as `0x${string}` });

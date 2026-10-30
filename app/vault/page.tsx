@@ -1,132 +1,318 @@
 'use client';
-import { Navbar } from '@/components/Navbar';
-import { useAuthGuard } from '@/hooks/useAuthGuard';
-import { useGuard, useGuardWrites } from '@/hooks/useGuardContract';
-import { useEffect, useState } from 'react';
-import { Zap, Loader2, Users, Clock, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
+import { useState } from 'react';
+import { useAuthGuard } from '@/hooks/useAuthGuard';
+import { useGuardStatus, useUsdc, useVaultApi } from '@/hooks/useGuardContract';
+import { useTxFlow } from '@/hooks/useTxFlow';
+import { calls, USDC_ADDRESS } from '@/lib/contract';
+import { deadlineOf } from '@/lib/guard-status';
+import type { GuardEvent } from '@/lib/guard-events';
+import { formatAmount, minBigint, splitAmount } from '@/lib/split';
+import { shortAddr, txUrl } from '@/lib/explorer';
+import { Icon, type IconName } from '@/components/icons';
+import { Modal } from '@/components/Modal';
+import { TxModal } from '@/components/TxModal';
+import { useToast } from '@/components/Toasts';
+import { EmptyCard, LoadingCard, SignInCard, StatusBadge, Trace, ago, fmtDate, useNow } from '@/components/vault/shared';
+
+const TOKEN = 'USDC';
+const DAY = 86_400;
 
 export default function VaultPage() {
-  const { isConnected, address } = useAuthGuard();
-  const { guard, beneficiaries, isLoading, refetch } = useGuard(address);
-  const writes = useGuardWrites();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const isPending = busy || writes.isPending;
+  const { address, isConnected, isConnecting, needsSignIn } = useAuthGuard();
+  const owner = needsSignIn ? undefined : address;
+  const guard = useGuardStatus(owner);
+  const usdc = useUsdc(owner);
+  const api = useVaultApi(owner);
+  const toast = useToast();
+  const now = useNow();
+  const [confirmRevoke, setConfirmRevoke] = useState(false);
 
-  async function run(action: () => Promise<unknown>) {
-    setBusy(true); setError(null);
-    try { await action(); refetch(); }
-    catch (e) { setError(e instanceof Error ? e.message.split('\n')[0] : 'Transaction failed'); }
-    finally { setBusy(false); }
-  }
-  const ping = () => run(writes.ping);
-  // Revoking also resets the allowance so the contract can no longer pull funds.
-  const revoke = () => {
-    if (!confirm('Revoke your guard? Heirs will no longer inherit automatically.')) return;
-    run(async () => { await writes.revoke(); await writes.approve(0n); });
+  const refetchAll = () => {
+    void guard.refetch();
+    void usdc.refetch();
+    void guard.events.refetch();
+    void api.refetch();
   };
-  const [timeLeft, setTimeLeft] = useState('');
 
-  useEffect(() => {
-    if (!guard?.isActive) { setTimeLeft('00d 00h 00m 00s'); return; }
-    const tick = () => {
-      const expiry = guard.lastPingTimestamp + guard.timeoutDuration;
-      const diff = expiry - Math.floor(Date.now() / 1000);
-      if (diff <= 0) setTimeLeft('00d 00h 00m 00s');
-      else {
-        const d = Math.floor(diff/86400), h = Math.floor((diff%86400)/3600);
-        const m = Math.floor((diff%3600)/60), s = diff%60;
-        setTimeLeft(`${d}d ${h}h ${m}m ${s}s`);
-      }
-    };
-    tick(); const id = setInterval(tick, 1000); return () => clearInterval(id);
-  }, [guard]);
+  const pingFlow = useTxFlow({
+    onDone: () => toast(`Timer restarted. Next deadline ${fmtDate(Math.floor(Date.now() / 1000) + Number(guard.config?.timeoutDuration ?? 0))}.`),
+  });
+  const revokeFlow = useTxFlow({ onDone: () => toast('Vault revoked and approval set to 0.') });
+  const resetFlow = useTxFlow({ onDone: () => toast('Approval set to 0.') });
 
-  if (!isConnected) return null;
-  if (isLoading) return <div className="min-h-screen bg-slate-950 flex justify-center py-20"><Loader2 className="w-8 h-8 text-emerald-400 animate-spin" /></div>;
-
-  if (!guard || !guard.isActive) {
+  if (!isConnected || isConnecting) return isConnecting ? <LoadingCard label="Connecting wallet…" /> : null;
+  if (needsSignIn) return <SignInCard title="Sign in to see your vault" />;
+  if (guard.isLoading) return <LoadingCard />;
+  if (guard.error)
     return (
-      <div className="min-h-screen bg-slate-950 text-slate-200">
-        <Navbar />
-        <main className="max-w-6xl mx-auto px-4 py-20 text-center">
-          <h1 className="text-3xl font-bold text-white mb-4">No Active Guard</h1>
-          <p className="text-slate-400 mb-8">You haven&apos;t set up your inheritance guard yet.</p>
-          <Link href="/vault/create" className="inline-block bg-emerald-500 hover:bg-emerald-600 text-slate-950 px-8 py-4 rounded-xl font-bold">
-            Create Your Guard
-          </Link>
-        </main>
-      </div>
+      <EmptyCard icon="alert" title="Couldn’t read the contract" action={<button className="btn btn-primary" type="button" onClick={refetchAll}>Try again</button>}>
+        {guard.error.message.split('\n')[0]}
+      </EmptyCard>
     );
+
+  const { config, beneficiaries, status } = guard;
+  if (!config || status === 'NONE')
+    return (
+      <EmptyCard icon="shield" title="You don’t have a vault yet" action={<Link className="btn btn-primary" href="/vault/create">Create your vault</Link>}>
+        It takes about two minutes: approve USDC, choose your period, and name your heirs.
+      </EmptyCard>
+    );
+
+  const events = guard.events.data?.events ?? [];
+  const sinceSetup = events.slice(0, events.findIndex((e) => e.name === 'GuardSetup') + 1 || events.length);
+  const balance = usdc.balance ?? 0n;
+  const allowance = usdc.allowance ?? 0n;
+  const movable = minBigint(balance, allowance);
+  const bps = beneficiaries.map((b) => b.bps);
+
+  // Executed: actual payouts from BeneficiaryPaid in the latest execution. Otherwise: today's preview.
+  const execIdx = sinceSetup.findIndex((e) => e.name === 'InheritanceExecuted');
+  const paid = new Map<string, bigint>();
+  if (status === 'EXECUTED' && execIdx >= 0) {
+    for (const e of sinceSetup.slice(execIdx)) {
+      if (e.name === 'BeneficiaryPaid') paid.set(String(e.args.wallet).toLowerCase(), e.args.amount as bigint);
+    }
   }
+  const amounts =
+    status === 'EXECUTED'
+      ? beneficiaries.map((b) => paid.get(b.wallet.toLowerCase()) ?? 0n)
+      : splitAmount(movable, bps);
+  const totalOut = amounts.reduce((a, b) => a + b, 0n);
+  const emails = new Map(api.data?.beneficiaries.map((b) => [b.walletAddress.toLowerCase(), b.email]) ?? []);
+  const days = Number(config.timeoutDuration) / DAY;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-200">
-      <Navbar />
-      <main className="max-w-6xl mx-auto px-4 py-8 space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-white">Owner Dashboard</h1>
-          <span className="flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /> ACTIVE
-          </span>
+    <main className="app">
+      <div className="wrap">
+        <div className="page-head">
+          <div>
+            <h1>Your vault</h1>
+            <p className="muted">
+              {TOKEN}, {beneficiaries.length} {beneficiaries.length === 1 ? 'heir' : 'heirs'}, {days}-day period
+            </p>
+          </div>
+          <StatusBadge status={status} />
         </div>
 
-        <div className="grid md:grid-cols-3 gap-6">
-          <div className="md:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-6 relative overflow-hidden">
-            <div className="absolute top-0 right-0 p-4 opacity-5"><Clock className="w-32 h-32 text-emerald-400" /></div>
-            <h2 className="text-slate-400 text-sm mb-1">Time Remaining</h2>
-            <div className="text-4xl md:text-5xl font-mono font-bold text-white mb-6">{timeLeft}</div>
-            <div className="flex flex-wrap gap-4">
-              <button onClick={() => ping()} disabled={isPending}
-                className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 px-8 py-4 rounded-xl font-bold text-lg flex items-center gap-2 disabled:opacity-50">
-                <Zap className="w-5 h-5" /> I&apos;M ALIVE
-              </button>
-              <button onClick={() => revoke()} disabled={isPending}
-                className="bg-slate-800 hover:bg-red-500/10 hover:text-red-400 border border-slate-700 px-6 py-4 rounded-xl font-bold transition disabled:opacity-50">
-                Revoke Guard
-              </button>
-            </div>
-            {error && (
-              <p className="mt-4 flex items-center gap-2 text-sm text-red-400">
-                <AlertTriangle className="w-4 h-4 shrink-0" /> {error}
-              </p>
+        <div className="layout">
+          <div className="main">
+            {status === 'ACTIVE' ? (
+              <TimerCard
+                deadline={Number(deadlineOf(config))}
+                timeout={Number(config.timeoutDuration)}
+                lastPing={Number(config.lastPingTimestamp)}
+                beats={sinceSetup.filter((e) => e.name === 'Pinged' || e.name === 'GuardSetup').length}
+                now={now}
+                busy={pingFlow.busy}
+                onPing={() => pingFlow.start([{ label: 'Check in', detail: `Calls ping(). Your timer restarts at ${days} days.`, call: calls.ping, onConfirmed: refetchAll }])}
+              />
+            ) : status === 'EXECUTED' ? (
+              <section className="card pad" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <h2 style={{ fontSize: 24 }}>Inheritance executed</h2>
+                <p className="muted">
+                  Chainlink Automation ran
+                  {sinceSetup[execIdx]?.timestamp ? ` on ${fmtDate(sinceSetup[execIdx].timestamp!)}` : ''} after {days} days
+                  of silence. {formatAmount(totalOut)} {TOKEN} was sent to your heirs.
+                </p>
+                <div><Link className="btn btn-ghost" href="/vault/create">Create a new vault</Link></div>
+              </section>
+            ) : (
+              <section className="card pad" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <h2 style={{ fontSize: 24 }}>{guard.events.data?.latest === 'InheritanceFailed' ? 'Automatic transfer failed' : 'Vault revoked'}</h2>
+                <p className="muted">
+                  {guard.events.data?.latest === 'InheritanceFailed'
+                    ? 'The transfer reverted, so the contract deactivated the vault. Nothing left your wallet.'
+                    : 'The timer is stopped and heirs can no longer inherit.'}{' '}
+                  {allowance === 0n ? `Your ${TOKEN} approval is 0.` : `Your ${TOKEN} approval for Pulse is still ${formatAmount(allowance)}.`}
+                </p>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                  {allowance > 0n && (
+                    <button className="btn btn-ghost" type="button" disabled={resetFlow.busy} onClick={() => resetFlow.start([{ label: `Set ${TOKEN} approval to 0`, call: () => calls.approve(0n), onConfirmed: refetchAll }])}>
+                      Reset approval to 0
+                    </button>
+                  )}
+                  <Link className="btn btn-primary" href="/vault/create">Create a new vault</Link>
+                </div>
+              </section>
             )}
+
+            <div className="grid-auto">
+              <div className="card pad">
+                <span className="muted small">Wallet balance</span>
+                <span className="stat num">{usdc.balance === undefined ? '…' : `${formatAmount(balance)} ${TOKEN}`}</span>
+              </div>
+              <div className="card pad">
+                <span className="muted small">Approved for Pulse</span>
+                <span className="stat num">{usdc.allowance === undefined ? '…' : `${formatAmount(allowance)} ${TOKEN}`}</span>
+              </div>
+              <div className="card pad">
+                <span className="muted small">{status === 'EXECUTED' ? 'Sent to heirs' : 'Heirs would receive today'}</span>
+                <span className="stat num" style={{ color: 'var(--accent-ink)' }}>{formatAmount(totalOut)} {TOKEN}</span>
+                {status !== 'EXECUTED' && <span className="muted" style={{ fontSize: 13 }}>The smaller of balance and approval</span>}
+              </div>
+            </div>
+
+            <section className="card pad" aria-labelledby="heirs-h">
+              <h2 id="heirs-h" style={{ fontSize: 22, marginBottom: 10 }}>Heirs</h2>
+              <table className="tbl">
+                <thead>
+                  <tr>
+                    <th scope="col">Wallet</th>
+                    <th scope="col">Email</th>
+                    <th scope="col" className="r">Share</th>
+                    <th scope="col" className="r">{status === 'EXECUTED' ? 'Received' : 'Would receive'}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {beneficiaries.map((b, i) => (
+                    <tr key={b.wallet}>
+                      <td data-label="Wallet" className="addr" title={b.wallet}>{shortAddr(b.wallet)}</td>
+                      <td data-label="Email">{emails.get(b.wallet.toLowerCase()) ?? <span className="muted">—</span>}</td>
+                      <td data-label="Share" className="r num">{(b.bps / 100).toFixed(2)}%</td>
+                      <td data-label={status === 'EXECUTED' ? 'Received' : 'Would receive'} className="r num" style={{ fontWeight: 600 }}>
+                        {formatAmount(amounts[i] ?? 0n)} {TOKEN}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="muted small" style={{ marginTop: 12 }}>
+                The last heir also receives any rounding leftover. Emails are stored off-chain and only shown to you.
+              </p>
+            </section>
           </div>
 
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-            <h3 className="text-slate-400 text-sm mb-4">On-Chain Status</h3>
-            <div className="space-y-3 text-sm">
-              <div className="flex justify-between"><span className="text-slate-400">Token</span><span className="text-white font-mono truncate max-w-[140px]">{guard.token}</span></div>
-              <div className="flex justify-between"><span className="text-slate-400">Timeout</span><span className="text-white font-mono">{Math.floor(guard.timeoutDuration/86400)}d</span></div>
-              <div className="flex justify-between"><span className="text-slate-400">Last Ping</span><span className="text-white font-mono">{new Date(guard.lastPingTimestamp*1000).toLocaleDateString()}</span></div>
-            </div>
-            <div className="mt-6 p-3 bg-emerald-500/5 border border-emerald-500/10 rounded-lg text-xs text-emerald-400">
-              Chainlink Automation monitors this guard. Execution is automatic.
-            </div>
+          <div className="side">
+            {status === 'ACTIVE' && (
+              <section className="card pad" aria-labelledby="rv-h">
+                <h2 id="rv-h" style={{ fontSize: 20 }}>Cancel this vault</h2>
+                <p className="muted" style={{ margin: '10px 0 14px' }}>
+                  Stops the timer and removes your heirs. Takes two wallet signatures.
+                </p>
+                <button className="btn btn-outline-danger" type="button" disabled={revokeFlow.busy} onClick={() => setConfirmRevoke(true)}>
+                  Revoke vault
+                </button>
+              </section>
+            )}
+            <section className="card pad" aria-labelledby="a-h">
+              <h2 id="a-h" style={{ fontSize: 20, marginBottom: 6 }}>Activity</h2>
+              <Activity events={events} loading={guard.events.isLoading} failed={guard.events.isError} now={now} />
+            </section>
           </div>
         </div>
+      </div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-          <h3 className="text-white font-bold mb-4 flex items-center gap-2">
-            <Users className="w-5 h-5 text-emerald-400" /> Beneficiaries
-          </h3>
-          <table className="w-full text-left text-sm">
-            <thead><tr className="text-slate-400 border-b border-slate-800">
-              <th className="pb-3">Wallet</th><th className="pb-3 text-right">BPS</th><th className="pb-3 text-right">%</th>
-            </tr></thead>
-            <tbody className="divide-y divide-slate-800/50">
-              {beneficiaries.map((b, i) => (
-                <tr key={i}>
-                  <td className="py-3 font-mono text-slate-300">{b.wallet.slice(0,6)}...{b.wallet.slice(-4)}</td>
-                  <td className="py-3 text-right font-mono text-emerald-400">{b.bps}</td>
-                  <td className="py-3 text-right font-mono text-slate-300">{(b.bps/100).toFixed(2)}%</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <Modal open={confirmRevoke} onClose={() => setConfirmRevoke(false)} title="Revoke your vault?">
+        <p className="muted" style={{ marginTop: 8 }}>Heirs will no longer inherit automatically. This takes two transactions:</p>
+        <ol style={{ paddingLeft: 20, margin: '12px 0', color: 'var(--muted)', listStyle: 'decimal' }}>
+          <li>Revoke the vault in the contract</li>
+          <li>Set your {TOKEN} approval to 0</li>
+        </ol>
+        <div className="modal-actions">
+          <button
+            className="btn btn-danger"
+            type="button"
+            onClick={() => {
+              setConfirmRevoke(false);
+              revokeFlow.start([
+                { label: 'Revoke vault', detail: 'Calls revokeGuard().', call: calls.revokeGuard, onConfirmed: refetchAll },
+                { label: `Reset ${TOKEN} approval`, detail: `Sets your ${TOKEN} approval for Pulse to 0.`, call: () => calls.approve(0n), onConfirmed: refetchAll },
+              ]);
+            }}
+          >
+            Revoke and reset
+          </button>
+          <button className="btn btn-ghost" type="button" onClick={() => setConfirmRevoke(false)}>Keep vault</button>
         </div>
-      </main>
-    </div>
+      </Modal>
+      <TxModal flow={pingFlow} title="Check in" />
+      <TxModal flow={revokeFlow} title="Revoke vault" />
+      <TxModal flow={resetFlow} title="Reset approval" />
+    </main>
+  );
+}
+
+function TimerCard({ deadline, timeout, lastPing, beats, now, busy, onPing }: {
+  deadline: number; timeout: number; lastPing: number; beats: number; now: number | null; busy: boolean; onPing: () => void;
+}) {
+  const left = now === null ? timeout : Math.max(0, deadline - now);
+  const parts: [number, string][] = [
+    [Math.floor(left / DAY), 'days'],
+    [Math.floor((left % DAY) / 3600), 'hours'],
+    [Math.floor((left % 3600) / 60), 'min'],
+    [left % 60, 'sec'],
+  ];
+  const frac = 1 - left / timeout;
+  const expired = now !== null && left === 0;
+
+  return (
+    <section className="timer" aria-labelledby="t-h">
+      <div style={{ flex: '1 1 300px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <h2 id="t-h" style={{ fontSize: 17, fontWeight: 600, color: '#3B3260' }}>
+          {expired ? 'Deadline passed' : 'Transfer starts in'}
+        </h2>
+        <div className="count num" role="timer" aria-label={`${parts[0][0]} days, ${parts[1][0]} hours, ${parts[2][0]} minutes left`}>
+          {parts.map(([v, unit], i) => (
+            <div key={unit} aria-hidden="true">
+              <b style={i === 0 ? { color: '#9E2418' } : undefined}>{now === null ? '–' : String(v).padStart(i === 0 ? 1 : 2, '0')}</b>
+              <span>{unit}</span>
+            </div>
+          ))}
+        </div>
+        <div>
+          <div className="bar" aria-hidden="true"><i style={{ width: `${(Math.max(0, Math.min(1, frac)) * 100).toFixed(2)}%` }} /></div>
+          <p className="muted small" style={{ marginTop: 8 }}>
+            {expired
+              ? 'Chainlink Automation will transfer on its next run. Checking in now still cancels it.'
+              : `Deadline ${fmtDate(deadline)}. Last check-in ${now === null ? fmtDate(lastPing) : ago(lastPing, now)}.`}
+          </p>
+        </div>
+        <div>
+          <button className="btn btn-primary" type="button" onClick={onPing} disabled={busy}>
+            <Icon name="heart" size={18} />
+            I’m still here
+          </button>
+        </div>
+      </div>
+      <div style={{ flex: '1 1 300px', minWidth: 0 }}>
+        <Trace beats={beats} frac={frac} label="Check-in trace. The dot moves toward the deadline marker as time passes." />
+      </div>
+    </section>
+  );
+}
+
+const EVENT_UI: Record<GuardEvent['name'], [IconName, (e: GuardEvent) => string]> = {
+  GuardSetup: ['shield', (e) => `Vault created: ${e.args.beneficiaryCount} heirs, ${Number(e.args.timeoutDuration as bigint) / DAY}-day period`],
+  Pinged: ['heart', () => 'Checked in'],
+  GuardRevoked: ['stop', () => 'Vault revoked'],
+  InheritanceExecuted: ['send', (e) => `Chainlink Automation sent ${formatAmount(e.args.totalAmount as bigint)} ${String(e.args.token).toLowerCase() === USDC_ADDRESS.toLowerCase() ? TOKEN : 'tokens'}`],
+  InheritanceFailed: ['alert', () => 'Automatic transfer failed. Nothing left your wallet'],
+  BeneficiaryPaid: ['send', (e) => `Paid ${formatAmount(e.args.amount as bigint)} ${TOKEN} to ${shortAddr(e.args.wallet as string)}`],
+};
+
+function Activity({ events, loading, failed, now }: { events: GuardEvent[]; loading: boolean; failed: boolean; now: number | null }) {
+  if (loading) return <p className="muted small" role="status">Loading on-chain activity…</p>;
+  if (failed) return <p className="muted small" role="status">Couldn’t load activity from the RPC. Your vault status above is read directly from the contract.</p>;
+  if (events.length === 0) return <p className="muted small">No activity yet.</p>;
+  return (
+    <ul className="feed">
+      {events.slice(0, 10).map((e) => {
+        const [icon, text] = EVENT_UI[e.name];
+        return (
+          <li key={`${e.txHash}-${e.logIndex}`}>
+            <span className="ic"><Icon name={icon} size={18} /></span>
+            <span>
+              {text(e)}
+              <br />
+              <a className="addr" style={{ fontSize: 12 }} href={txUrl(e.txHash)} target="_blank" rel="noreferrer">
+                {shortAddr(e.txHash)} on BaseScan
+              </a>
+            </span>
+            <span className="end">{e.timestamp ? (now ? ago(e.timestamp, now) : fmtDate(e.timestamp)) : ''}</span>
+          </li>
+        );
+      })}
+    </ul>
   );
 }

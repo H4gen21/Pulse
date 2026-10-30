@@ -6,6 +6,7 @@ import {
   RainbowKitProvider,
   createAuthenticationAdapter,
   darkTheme,
+  lightTheme,
 } from '@rainbow-me/rainbowkit';
 import { WagmiProvider } from 'wagmi';
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
@@ -13,6 +14,10 @@ import { SessionProvider, getCsrfToken, signIn, signOut, useSession } from 'next
 import { createSiweMessage } from 'viem/siwe';
 import { config } from '@/lib/wagmi';
 import { ReactNode, useState } from 'react';
+import { ThemeProvider, useTheme } from '@/components/ThemeProvider';
+import { ToastProvider } from '@/components/Toasts';
+
+const rkOptions = { accentColor: '#AB9FF2', accentColorForeground: '#1E173A', borderRadius: 'large' } as const;
 
 // RainbowKit drives the SIWE flow: connect → sign message → NextAuth session cookie.
 const siweAdapter = createAuthenticationAdapter({
@@ -39,15 +44,10 @@ const siweAdapter = createAuthenticationAdapter({
 
 function WalletProviders({ children }: { children: ReactNode }) {
   const { status } = useSession();
+  const { theme } = useTheme();
   return (
     <RainbowKitAuthenticationProvider adapter={siweAdapter} status={status}>
-      <RainbowKitProvider
-        theme={darkTheme({
-          accentColor: '#10b981',
-          accentColorForeground: '#020617',
-          borderRadius: 'medium',
-        })}
-      >
+      <RainbowKitProvider theme={theme === 'dark' ? darkTheme(rkOptions) : lightTheme(rkOptions)}>
         {children}
       </RainbowKitProvider>
     </RainbowKitAuthenticationProvider>
@@ -61,7 +61,11 @@ export function Providers({ children }: { children: ReactNode }) {
     <WagmiProvider config={config}>
       <SessionProvider refetchInterval={0}>
         <QueryClientProvider client={queryClient}>
-          <WalletProviders>{children}</WalletProviders>
+          <ThemeProvider>
+            <WalletProviders>
+              <ToastProvider>{children}</ToastProvider>
+            </WalletProviders>
+          </ThemeProvider>
         </QueryClientProvider>
       </SessionProvider>
     </WagmiProvider>

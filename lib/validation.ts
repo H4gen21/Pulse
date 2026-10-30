@@ -1,12 +1,14 @@
 import { z } from 'zod';
 import { isAddress } from 'viem';
+import { TOTAL_BPS } from './split';
+
+export { TOTAL_BPS };
 
 // Mirrors InheritanceGuard.sol constants. Keep both in sync.
 export const DAY = 86_400;
 export const MIN_TIMEOUT_SEC = 60 * DAY; // BR-01
 export const MAX_TIMEOUT_SEC = 730 * DAY; // BR-01
 export const DEFAULT_TIMEOUT_DAYS = 180;
-export const TOTAL_BPS = 10_000; // BR-02
 export const MIN_BPS_PER_HEIR = 100;
 export const MAX_BENEFICIARIES = 10;
 
@@ -17,18 +19,8 @@ export const address = z
 
 export const txHash = z.string().regex(/^0x[0-9a-fA-F]{64}$/, 'Invalid tx hash');
 
-/** BR-03 preview: integer split with the remainder on the last heir (same math as the contract). */
-export function splitAmount(amount: bigint, bps: number[]): bigint[] {
-  let distributed = 0n;
-  return bps.map((b, i) => {
-    if (i === bps.length - 1) return amount - distributed;
-    const share = (amount * BigInt(b)) / BigInt(TOTAL_BPS);
-    distributed += share;
-    return share;
-  });
-}
-
 export const postVaultSchema = z.object({
+  chainId: z.number().int().positive(),
   txHash,
   beneficiaries: z
     .array(

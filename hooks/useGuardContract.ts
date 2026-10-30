@@ -1,60 +1,95 @@
 'use client';
-import { usePublicClient, useReadContract, useWriteContract } from 'wagmi';
-import { guardAbi, GUARD_ADDRESS, USDC_ADDRESS, erc20Abi } from '@/lib/contract';
+import { useQuery } from '@tanstack/react-query';
+import { usePublicClient, useReadContracts } from 'wagmi';
+import { chain } from '@/lib/chain';
+import { erc20Abi, guardAbi, GUARD_ADDRESS, USDC_ADDRESS } from '@/lib/contract';
+import { fetchGuardEvents, latestTerminal, withTimestamps } from '@/lib/guard-events';
+import { deriveStatus, toGuardConfig, type GuardStatus } from '@/lib/guard-status';
 
+export type Beneficiary = { wallet: `0x${string}`; bps: number };
+
+/** Guard config + heirs for any owner (public data). */
 export function useGuard(owner?: `0x${string}`) {
-  const { data, refetch, isLoading } = useReadContract({
-    address: GUARD_ADDRESS,
-    abi: guardAbi,
-    functionName: 'guards',
-    args: owner ? [owner] : undefined,
-    query: { enabled: !!owner },
+  const enabled = !!owner;
+  const reads = useReadContracts({
+    allowFailure: false,
+    contracts: owner
+      ? [
+          { chainId: chain.id, address: GUARD_ADDRESS, abi: guardAbi, functionName: 'guards', args: [owner] },
+          { chainId: chain.id, address: GUARD_ADDRESS, abi: guardAbi, functionName: 'getBeneficiaries', args: [owner] },
+        ]
+      : [],
+    query: { enabled },
   });
-
-  const { data: beneficiaries, refetch: refetchBens } = useReadContract({
-    address: GUARD_ADDRESS,
-    abi: guardAbi,
-    functionName: 'getBeneficiaries',
-    args: owner ? [owner] : undefined,
-    query: { enabled: !!owner },
-  });
-
+  const [cfgTuple, bens] = (reads.data ?? []) as unknown as [
+    readonly [`0x${string}`, bigint, bigint, boolean] | undefined,
+    readonly Beneficiary[] | undefined,
+  ];
   return {
-    guard: data ? {
-      token: data[0],
-      timeoutDuration: Number(data[1]),
-      lastPingTimestamp: Number(data[2]),
-      isActive: data[3],
-    } : null,
-    beneficiaries: (beneficiaries ?? []) as readonly { wallet: `0x${string}`; bps: number }[],
-    isLoading,
-    refetch: () => { refetch(); refetchBens(); },
+    config: cfgTuple ? toGuardConfig(cfgTuple) : undefined,
+    beneficiaries: bens ?? [],
+    isLoading: reads.isLoading,
+    error: reads.error,
+    refetch: reads.refetch,
   };
 }
 
-export function useGuardWrites() {
-  const publicClient = usePublicClient();
-  const { writeContractAsync, isPending, error } = useWriteContract();
+/** The owner's USDC balance and the allowance granted to the guard. */
+export function useUsdc(owner?: `0x${string}`) {
+  const reads = useReadContracts({
+    allowFailure: false,
+    contracts: owner
+      ? [
+          { chainId: chain.id, address: USDC_ADDRESS, abi: erc20Abi, functionName: 'balanceOf', args: [owner] },
+          { chainId: chain.id, address: USDC_ADDRESS, abi: erc20Abi, functionName: 'allowance', args: [owner, GUARD_ADDRESS] },
+        ]
+      : [],
+    query: { enabled: !!owner },
+  });
+  const [balance, allowance] = (reads.data ?? []) as unknown as [bigint | undefined, bigint | undefined];
+  return { balance, allowance, isLoading: reads.isLoading, refetch: reads.refetch };
+}
 
-  // Resolves once the tx is mined; throws if it reverted.
-  async function confirm(hash: `0x${string}`) {
-    const receipt = await publicClient!.waitForTransactionReceipt({ hash });
-    if (receipt.status !== 'success') throw new Error('Transaction reverted');
-    return hash;
-  }
+/** Pulse events for an owner (newest first, with timestamps) and the derived status. */
+export function useGuardEvents(owner?: `0x${string}`) {
+  const client = usePublicClient({ chainId: chain.id });
+  return useQuery({
+    queryKey: ['guard-events', chain.id, owner],
+    enabled: !!owner && !!client,
+    staleTime: 15_000,
+    queryFn: async () => {
+      const all = await fetchGuardEvents(client!, owner!);
+      return { latest: latestTerminal(all), events: await withTimestamps(client!, all) };
+    },
+  });
+}
 
-  return {
-    setupGuard: async (token: `0x${string}`, timeout: bigint, bens: { wallet: `0x${string}`; bps: number }[]) =>
-      confirm(await writeContractAsync({
-        address: GUARD_ADDRESS, abi: guardAbi, functionName: 'setupGuard',
-        args: [token, timeout, bens.map(b => ({ wallet: b.wallet, bps: b.bps }))],
-      })),
-    ping: async () => confirm(await writeContractAsync({ address: GUARD_ADDRESS, abi: guardAbi, functionName: 'ping' })),
-    revoke: async () => confirm(await writeContractAsync({ address: GUARD_ADDRESS, abi: guardAbi, functionName: 'revokeGuard' })),
-    approve: async (amount: bigint) => confirm(await writeContractAsync({
-      address: USDC_ADDRESS, abi: erc20Abi, functionName: 'approve',
-      args: [GUARD_ADDRESS, amount],
-    })),
-    isPending, error,
-  };
+/** Status from config + events. Falls back to `fallback` (e.g. the API's cached status) without logs. */
+export function useGuardStatus(owner?: `0x${string}`, fallback?: GuardStatus) {
+  const guard = useGuard(owner);
+  const events = useGuardEvents(owner);
+  let status = deriveStatus(guard.config, events.data?.latest ?? null);
+  if (status === 'REVOKED' && !events.data && fallback === 'EXECUTED') status = 'EXECUTED';
+  return { ...guard, status, events };
+}
+
+export type VaultApi = {
+  status: 'UNCONFIGURED' | 'ACTIVE' | 'REVOKED' | 'EXECUTED';
+  txHash: `0x${string}` | null;
+  beneficiaries: { position: number; walletAddress: string; bpsShare: number; email?: string | null }[];
+};
+
+/** GET /api/vault: off-chain record (setup tx, cached status; emails only for the signed-in owner). */
+export function useVaultApi(owner?: `0x${string}`) {
+  return useQuery({
+    queryKey: ['vault-api', owner],
+    enabled: !!owner,
+    retry: 1,
+    queryFn: async (): Promise<VaultApi> => {
+      const res = await fetch(`/api/vault?address=${owner}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
+      return data;
+    },
+  });
 }
