@@ -7,7 +7,20 @@ export const inheritanceGuardAbi = [
   },
   {
     "type": "function",
-    "name": "MAX_BATCH",
+    "name": "GAS_PER_HEIR",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "GAS_PER_OWNER",
     "inputs": [],
     "outputs": [
       {
@@ -33,7 +46,20 @@ export const inheritanceGuardAbi = [
   },
   {
     "type": "function",
-    "name": "MAX_TIMEOUT",
+    "name": "MAX_EXECUTIONS_PER_UPKEEP",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MAX_SCAN_WINDOW",
     "inputs": [],
     "outputs": [
       {
@@ -53,19 +79,6 @@ export const inheritanceGuardAbi = [
         "name": "",
         "type": "uint16",
         "internalType": "uint16"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "MIN_TIMEOUT",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
       }
     ],
     "stateMutability": "view"
@@ -141,7 +154,7 @@ export const inheritanceGuardAbi = [
   },
   {
     "type": "function",
-    "name": "executeFor",
+    "name": "deadlineOf",
     "inputs": [
       {
         "name": "o",
@@ -149,18 +162,11 @@ export const inheritanceGuardAbi = [
         "internalType": "address"
       }
     ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "forwarder",
-    "inputs": [],
     "outputs": [
       {
         "name": "",
-        "type": "address",
-        "internalType": "address"
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "stateMutability": "view"
@@ -251,6 +257,51 @@ export const inheritanceGuardAbi = [
   },
   {
     "type": "function",
+    "name": "isForwarder",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "maxTimeout",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "pure"
+  },
+  {
+    "type": "function",
+    "name": "minTimeout",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "pure"
+  },
+  {
+    "type": "function",
     "name": "owner",
     "inputs": [],
     "outputs": [
@@ -304,6 +355,11 @@ export const inheritanceGuardAbi = [
         "name": "f",
         "type": "address",
         "internalType": "address"
+      },
+      {
+        "name": "allowed",
+        "type": "bool",
+        "internalType": "bool"
       }
     ],
     "outputs": [],
@@ -384,6 +440,31 @@ export const inheritanceGuardAbi = [
   },
   {
     "type": "event",
+    "name": "BeneficiaryTransferFailed",
+    "inputs": [
+      {
+        "name": "owner",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "wallet",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "ForwarderUpdated",
     "inputs": [
       {
@@ -391,6 +472,12 @@ export const inheritanceGuardAbi = [
         "type": "address",
         "indexed": true,
         "internalType": "address"
+      },
+      {
+        "name": "allowed",
+        "type": "bool",
+        "indexed": false,
+        "internalType": "bool"
       }
     ],
     "anonymous": false
@@ -550,6 +637,17 @@ export const inheritanceGuardAbi = [
   },
   {
     "type": "error",
+    "name": "InsufficientGas",
+    "inputs": [
+      {
+        "name": "needed",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
     "name": "InvalidBeneficiary",
     "inputs": [
       {
@@ -581,11 +679,6 @@ export const inheritanceGuardAbi = [
   },
   {
     "type": "error",
-    "name": "OnlySelf",
-    "inputs": []
-  },
-  {
-    "type": "error",
     "name": "OwnableInvalidOwner",
     "inputs": [
       {
@@ -613,13 +706,7 @@ export const inheritanceGuardAbi = [
   },
   {
     "type": "error",
-    "name": "SafeERC20FailedOperation",
-    "inputs": [
-      {
-        "name": "token",
-        "type": "address",
-        "internalType": "address"
-      }
-    ]
+    "name": "TokenCallFailed",
+    "inputs": []
   }
 ] as const;

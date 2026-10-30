@@ -6,11 +6,11 @@ Legend: ✅ handled in code · ⚠️ partially handled / needs follow-up · ☐
 
 | # | Risk | Status | Notes |
 |---|---|---|---|
-| A1 | **Reentrancy** via token callbacks (ERC-777-style hooks, malicious tokens) | ✅ | `nonReentrant` on every state-changing entry point; `executeFor` deactivates the guard **before** any transfer (CEI). |
-| A2 | **Untrusted `performData`** (fake owners, early execution) | ✅ | Every owner is re-checked with `isExpired()` inside `performUpkeep`; `performUpkeep` is restricted to the Chainlink **forwarder**. |
-| A3 | **Batch DoS**: one reverting transfer (blacklisted USDC heir, paused token) blocks every owner | ✅ | Per-owner `try this.executeFor(o)`; a failure emits `InheritanceFailed`. |
-| A4 | **Gas griefing**: force `executeFor` out of gas to deactivate a guard | ✅ | Only the forwarder can call; an empty revert reason (a possible OOG) leaves the guard active so it's retried. |
-| A5 | **Unbounded loops** in `checkUpkeep` with many owners | ⚠️ | Batched (`MAX_BATCH = 20`) and shardable through `checkData`. Load-test with N owners and register multiple upkeeps if needed. |
+| A1 | **Reentrancy** via token callbacks (ERC-777-style hooks, malicious tokens) | ✅ | `nonReentrant` on every state-changing entry point; `_execute` deactivates the guard **before** any transfer (CEI). `test_ReentrancyIsBlocked` re-enters from `transferFrom`. |
+| A2 | **Untrusted `performData`** (fake owners, early execution) | ✅ | Every owner is re-checked with `isExpired()` inside `performUpkeep`; duplicates are skipped; `performUpkeep` is restricted to registered Chainlink **forwarders** (`setForwarder(addr, bool)`, owner only). |
+| A3 | **Batch DoS**: one reverting transfer (blacklisted USDC heir, paused token) blocks every owner | ✅ | Per-heir `trySafeTransferFrom` never reverts: a failed heir emits `BeneficiaryTransferFailed` and their share stays with the owner; the other heirs and owners are paid. A token whose `balanceOf`/`allowance` reverts emits `InheritanceFailed` and is deactivated. USDT-style tokens that return no bool are supported. |
+| A4 | **Gas griefing**: run out of gas mid-payout so heirs look "failed" | ✅ | An owner is only started with `60k + heirs × 90k` gas left; later owners wait for the next upkeep, and if even the first can't fit it reverts `InsufficientGas` (visible, no LINK spent). Upkeep gas limit ≥ 960k (use 2M). |
+| A5 | **Unbounded loops** in `checkUpkeep` with many owners | ✅ / ⚠️ | Scans at most `MAX_SCAN_WINDOW = 200` owners (rotating with `block.number` when `checkData` is empty, or a fixed `abi.encode(start, window)` shard) and executes at most `MAX_EXECUTIONS_PER_UPKEEP = 20`. Load-test before large TVL. |
 | A6 | **Allowance race condition** (classic `approve` front-run) | ✅ / ⚠️ | Not exploitable here: the spender is the immutable contract, not an EOA. The UI resets the allowance to 0 on revoke. For USDT-style tokens that require `approve(0)` first, add that step in the UI. |
 | A7 | **Unlimited approvals** | ⚠️ | The UI asks for an explicit cap (default 1,000 USDC). Never default to `maxUint256`; tell users the cap is the maximum that can ever move. |
 | A8 | Execution amount > what the owner holds | ✅ | `min(balanceOf, allowance)`, and 0 skips without a revert (BR-05). |
@@ -23,6 +23,7 @@ Legend: ✅ handled in code · ⚠️ partially handled / needs follow-up · ☐
 | A15 | Wrong chain / wrong contract address in the frontend | ✅ | Wagmi is limited to the configured chain; the API verifies events come from `GUARD_ADDRESS`. |
 | A16 | Static analysis + external review | ☐ | Slither and Aderyn clean; at least one independent audit or a Code4rena/Sherlock contest before holding real TVL. |
 | A17 | Source verification | ☐ | Verify on Basescan; publish the deployment address and commit hash. |
+| A18 | **Staging contract on mainnet** (15-second timer) | ✅ | `InheritanceGuardStaging` lives in `contracts/testnet/`; CI (`pnpm check:staging`) fails if production code imports it; `DeployStaging.s.sol` refuses non-testnet chain ids; the UI ignores `NEXT_PUBLIC_PULSE_ENV=staging` on chain 8453. |
 
 ## B. Web2 / API
 

@@ -5,13 +5,15 @@ import { useId, useState } from 'react';
 import { isAddress } from 'viem';
 import { AuthGate } from '@/components/AuthGate';
 import { CreatePreview } from '@/components/vault/previews';
-import { useGuardStatus, useUsdc } from '@/hooks/useGuardContract';
+import { useGuardStatus, useTimeoutBounds, useUsdc } from '@/hooks/useGuardContract';
 import { useTxFlow } from '@/hooks/useTxFlow';
 import { chain } from '@/lib/chain';
 import { calls, USDC_ADDRESS } from '@/lib/contract';
 import { shortAddr, txUrl } from '@/lib/explorer';
 import { bpsToPct, equalBps, formatAmount, minBigint, parseAmount, pctToBps, splitAmount, TOTAL_BPS } from '@/lib/split';
 import { DAY, DEFAULT_TIMEOUT_DAYS, MAX_BENEFICIARIES, validateHeirs } from '@/lib/validation';
+import { formatPeriod, PERIOD_UNITS, toSeconds, type PeriodUnit } from '@/lib/period';
+import { IS_STAGING } from '@/lib/pulse-env';
 import { Icon } from '@/components/icons';
 import { TxModal } from '@/components/TxModal';
 import { useToast } from '@/components/Toasts';
@@ -41,6 +43,10 @@ function CreateVault({ owner }: { owner: `0x${string}` }) {
 
   const [amount, setAmount] = useState('1,000');
   const [days, setDays] = useState(DEFAULT_TIMEOUT_DAYS);
+  // Staging only: free-form period in seconds / minutes / days.
+  const [periodValue, setPeriodValue] = useState('2');
+  const [periodUnit, setPeriodUnit] = useState<PeriodUnit>('minutes');
+  const bounds = useTimeoutBounds();
   const [heirs, setHeirs] = useState<Heir[]>([blank('50'), blank('50')]);
   const [touched, setTouched] = useState<Set<string>>(new Set());
   const [saveError, setSaveError] = useState<{ txHash: `0x${string}`; message: string } | null>(null);
@@ -64,6 +70,13 @@ function CreateVault({ owner }: { owner: `0x${string}` }) {
     if (h.email.trim() && !EMAIL.test(h.email.trim())) problems.push(`Heir ${i + 1}: check the email.`);
   });
   if (heirErr) problems.push(heirErr.replace(/BPS/g, 'basis points'));
+  const timeoutSec = IS_STAGING ? toSeconds(periodValue, periodUnit) : days * DAY;
+  if (timeoutSec === null) problems.push('Enter the period as a whole number.');
+  else if (timeoutSec < bounds.min || timeoutSec > bounds.max)
+    problems.push(`The period must be between ${formatPeriod(bounds.min, { staging: IS_STAGING })} and ${formatPeriod(bounds.max, { staging: IS_STAGING })}.`);
+  const period = timeoutSec === null ? '–' : formatPeriod(timeoutSec, { staging: IS_STAGING });
+  const minDays = Math.ceil(bounds.min / DAY);
+  const maxDays = Math.floor(bounds.max / DAY);
   const ready = problems.length === 0;
 
   const movable = minBigint(amt ?? 0n, balance);
@@ -196,23 +209,43 @@ function CreateVault({ owner }: { owner: `0x${string}` }) {
               <h2 id={`${id}-c2`} style={{ fontSize: 22, display: 'flex', gap: 12, alignItems: 'center' }}>
                 <span className="badge b-active">2</span>Silence before transfer
               </h2>
-              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 12, marginTop: 16 }} aria-live="polite">
-                <span className="num" style={{ fontWeight: 700, letterSpacing: '-.04em', fontSize: 'clamp(44px, 12vw, 64px)', lineHeight: 1, color: 'var(--accent-ink)' }}>
-                  {days} days
-                </span>
-                <span className="muted">about {Math.round(days / 30.4)} months</span>
-              </div>
-              <label className="lbl" htmlFor={`${id}-days`} style={{ marginTop: 14 }}>Inactivity period</label>
-              <input type="range" id={`${id}-days`} min={60} max={730} step={1} value={days} onChange={(e) => setDays(Number(e.target.value))} aria-valuetext={`${days} days`} />
-              <div className="muted" style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 13 }}>
-                <span>60 days minimum</span>
-                <span>730 days maximum</span>
-              </div>
-              <div className="seg" style={{ marginTop: 12 }} role="group" aria-label="Presets">
-                {PRESETS.map(([d, label]) => (
-                  <button key={d} type="button" aria-pressed={days === d} onClick={() => setDays(d)}>{label}</button>
-                ))}
-              </div>
+              {IS_STAGING ? (
+                <div style={{ marginTop: 16 }}>
+                  <label className="lbl" htmlFor={`${id}-period`}>Inactivity period</label>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+                    <input className="field num" id={`${id}-period`} inputMode="numeric" autoComplete="off" style={{ maxWidth: 140 }}
+                      value={periodValue} aria-describedby={`${id}-period-h`} onChange={(e) => setPeriodValue(e.target.value)} />
+                    <div className="seg" role="group" aria-label="Unit">
+                      {PERIOD_UNITS.map(([u]) => (
+                        <button key={u} type="button" aria-pressed={periodUnit === u} onClick={() => setPeriodUnit(u)}>{u}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <p className="muted small" id={`${id}-period-h`} style={{ marginTop: 6 }}>
+                    Staging contract: {formatPeriod(bounds.min, { staging: true })} minimum, {formatPeriod(bounds.max, { staging: true })} maximum.
+                  </p>
+                </div>
+              ) : (
+                <>
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 12, marginTop: 16 }} aria-live="polite">
+                  <span className="num" style={{ fontWeight: 700, letterSpacing: '-.04em', fontSize: 'clamp(44px, 12vw, 64px)', lineHeight: 1, color: 'var(--accent-ink)' }}>
+                    {days} days
+                  </span>
+                  <span className="muted">about {Math.round(days / 30.4)} months</span>
+                </div>
+                <label className="lbl" htmlFor={`${id}-days`} style={{ marginTop: 14 }}>Inactivity period</label>
+                <input type="range" id={`${id}-days`} min={minDays} max={maxDays} step={1} value={days} onChange={(e) => setDays(Number(e.target.value))} aria-valuetext={`${days} days`} />
+                <div className="muted" style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 13 }}>
+                  <span>{minDays} days minimum</span>
+                  <span>{maxDays} days maximum</span>
+                </div>
+                <div className="seg" style={{ marginTop: 12 }} role="group" aria-label="Presets">
+                  {PRESETS.filter(([d]) => d >= minDays && d <= maxDays).map(([d, label]) => (
+                    <button key={d} type="button" aria-pressed={days === d} onClick={() => setDays(d)}>{label}</button>
+                  ))}
+                </div>
+                </>
+              )}
               <p className="muted small" style={{ marginTop: 14 }}>
                 Pulse doesn’t send you reminders. Add a calendar reminder shorter than this period.
               </p>
@@ -288,7 +321,7 @@ function CreateVault({ owner }: { owner: `0x${string}` }) {
               <h2 id={`${id}-rv`} style={{ fontSize: 20 }}>Review</h2>
               <ul className="feed" style={{ marginTop: 8 }}>
                 <li><span>Token</span><span className="end">{TOKEN}</span></li>
-                <li><span>Period</span><span className="end">{days} days</span></li>
+                <li><span>Period</span><span className="end">{period}</span></li>
                 {heirs.map((h, i) => (
                   <li key={i}>
                     <span>
@@ -310,8 +343,8 @@ function CreateVault({ owner }: { owner: `0x${string}` }) {
                 onClick={() =>
                   createFlow.start([{
                     label: 'Create vault',
-                    detail: `Calls setupGuard() with ${heirs.length} heirs and a ${days}-day period.`,
-                    call: () => calls.setupGuard(USDC_ADDRESS, BigInt(days * DAY), heirs.map((h, i) => ({ wallet: h.wallet.trim() as `0x${string}`, bps: bps[i] }))),
+                    detail: `Calls setupGuard() with ${heirs.length} heirs and a ${formatPeriod(timeoutSec!, { staging: IS_STAGING, adjective: true })} period.`,
+                    call: () => calls.setupGuard(USDC_ADDRESS, BigInt(timeoutSec!), heirs.map((h, i) => ({ wallet: h.wallet.trim() as `0x${string}`, bps: bps[i] }))),
                     onConfirmed: (r) => afterSetup(r.transactionHash),
                   }])
                 }

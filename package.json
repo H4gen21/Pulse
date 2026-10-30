@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:fork": "node scripts/dev-fork.mjs",
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "next lint",
@@ -11,6 +12,7 @@
     "test": "vitest run",
     "test:contracts": "forge test -vv",
     "abi:gen": "node scripts/gen-abi.mjs",
+    "check:staging": "node scripts/check-staging-imports.mjs",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate deploy",
     "db:generate": "prisma generate",

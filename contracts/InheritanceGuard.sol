@@ -15,12 +15,17 @@ contract InheritanceGuard is AutomationCompatibleInterface, ReentrancyGuard, Own
     using SafeERC20 for IERC20;
 
     // ─── Constants (Business Rules) ──────────────────────────────────────────
-    uint256 public constant MIN_TIMEOUT = 60 days; // BR-01
-    uint256 public constant MAX_TIMEOUT = 730 days; // BR-01
     uint16 public constant TOTAL_BPS = 10_000; // BR-02
     uint16 public constant MIN_BPS_PER_HEIR = 100; // 1%
     uint256 public constant MAX_BENEFICIARIES = 10;
-    uint256 public constant MAX_BATCH = 20; // max owners executed per performUpkeep
+    uint256 public constant MAX_EXECUTIONS_PER_UPKEEP = 20; // owners executed per performUpkeep
+    uint256 public constant MAX_SCAN_WINDOW = 200; // owners inspected per checkUpkeep
+    /// @dev performUpkeep only starts an owner while GAS_PER_OWNER + heirs * GAS_PER_HEIR remains,
+    ///      so a low gas limit can never make a healthy heir's transfer fail and forfeit their
+    ///      share. Later owners wait for the next upkeep; if not even the first fits, it reverts
+    ///      with InsufficientGas so the problem is visible (and gas estimation finds the limit).
+    uint256 public constant GAS_PER_OWNER = 60_000;
+    uint256 public constant GAS_PER_HEIR = 90_000;
 
     // ─── Types ───────────────────────────────────────────────────────────────
     struct Beneficiary {
@@ -41,17 +46,22 @@ contract InheritanceGuard is AutomationCompatibleInterface, ReentrancyGuard, Own
     address[] public activeOwners;
     mapping(address => uint256) internal activeIndex; // 1-based; 0 = not in activeOwners
 
-    /// @notice Chainlink Automation forwarder; the only address allowed to call performUpkeep.
-    address public forwarder;
+    /// @notice Chainlink Automation forwarders allowed to call performUpkeep (one per upkeep).
+    mapping(address => bool) public isForwarder;
 
     // ─── Events ──────────────────────────────────────────────────────────────
     event GuardSetup(address indexed owner, address indexed token, uint256 timeoutDuration, uint256 beneficiaryCount);
     event Pinged(address indexed owner, uint256 nextDeadline);
     event GuardRevoked(address indexed owner);
     event BeneficiaryPaid(address indexed owner, address indexed wallet, uint256 amount);
+    /// @notice The transfer to `wallet` failed (e.g. USDC-blacklisted); `amount` stays with the owner.
+    event BeneficiaryTransferFailed(address indexed owner, address indexed wallet, uint256 amount);
+    /// @param totalAmount sum actually paid to heirs (excludes failed transfers)
     event InheritanceExecuted(address indexed owner, address indexed token, uint256 totalAmount);
+    /// @notice The token's balanceOf/allowance could not be read. The guard is deactivated and
+    ///         nothing moves. `reason` is never empty.
     event InheritanceFailed(address indexed owner, bytes reason);
-    event ForwarderUpdated(address indexed forwarder);
+    event ForwarderUpdated(address indexed forwarder, bool allowed);
 
     // ─── Errors ──────────────────────────────────────────────────────────────
     error InvalidToken();
@@ -62,16 +72,29 @@ contract InheritanceGuard is AutomationCompatibleInterface, ReentrancyGuard, Own
     error BpsSumMismatch(uint256 total);
     error GuardNotActive();
     error NotForwarder();
-    error OnlySelf();
+    error TokenCallFailed();
+    error InsufficientGas(uint256 needed);
 
     constructor() Ownable(msg.sender) {}
+
+    // ─── Timeout bounds (BR-01) ──────────────────────────────────────────────
+
+    /// @notice Shortest allowed inactivity period. Production: 60 days.
+    function minTimeout() public pure virtual returns (uint256) {
+        return 60 days;
+    }
+
+    /// @notice Longest allowed inactivity period. Production: 730 days.
+    function maxTimeout() public pure virtual returns (uint256) {
+        return 730 days;
+    }
 
     // ─── Owner actions ───────────────────────────────────────────────────────
 
     /// @notice Create or replace the caller's guard. Caller must separately `approve` this contract.
     function setupGuard(address token, uint256 timeoutDuration, Beneficiary[] calldata input) external nonReentrant {
-        if (token == address(0)) revert InvalidToken();
-        if (timeoutDuration < MIN_TIMEOUT || timeoutDuration > MAX_TIMEOUT) revert InvalidTimeout();
+        if (token.code.length == 0) revert InvalidToken();
+        if (timeoutDuration < minTimeout() || timeoutDuration > maxTimeout()) revert InvalidTimeout();
         uint256 n = input.length;
         if (n == 0 || n > MAX_BENEFICIARIES) revert InvalidBeneficiaryCount();
 
@@ -121,8 +144,9 @@ contract InheritanceGuard is AutomationCompatibleInterface, ReentrancyGuard, Own
 
     // ─── Chainlink Automation ────────────────────────────────────────────────
 
-    /// @param checkData empty to scan all owners, or abi.encode(uint256 start, uint256 count)
-    ///        so several upkeeps can shard a large owner set.
+    /// @param checkData abi.encode(uint256 start, uint256 window) to scan a fixed shard (window is
+    ///        capped at MAX_SCAN_WINDOW), or empty to scan one MAX_SCAN_WINDOW slice that rotates
+    ///        with block.number, so a single upkeep still reaches every owner over time.
     function checkUpkeep(bytes calldata checkData)
         external
         view
@@ -131,16 +155,19 @@ contract InheritanceGuard is AutomationCompatibleInterface, ReentrancyGuard, Own
     {
         uint256 len = activeOwners.length;
         uint256 start;
-        uint256 end = len;
+        uint256 window = MAX_SCAN_WINDOW;
         if (checkData.length > 0) {
-            (uint256 s, uint256 c) = abi.decode(checkData, (uint256, uint256));
-            start = s;
-            end = s + c < len ? s + c : len;
+            (start, window) = abi.decode(checkData, (uint256, uint256));
+            if (window > MAX_SCAN_WINDOW) window = MAX_SCAN_WINDOW;
+        } else if (len > window) {
+            start = (block.number * window) % len;
         }
+        if (start >= len) return (false, "");
+        uint256 end = len - start > window ? start + window : len;
 
-        address[] memory due = new address[](MAX_BATCH);
+        address[] memory due = new address[](MAX_EXECUTIONS_PER_UPKEEP);
         uint256 found;
-        for (uint256 i = start; i < end && found < MAX_BATCH; ++i) {
+        for (uint256 i = start; i < end && found < MAX_EXECUTIONS_PER_UPKEEP; ++i) {
             address o = activeOwners[i];
             if (isExpired(o)) due[found++] = o;
         }
@@ -152,63 +179,41 @@ contract InheritanceGuard is AutomationCompatibleInterface, ReentrancyGuard, Own
         return (true, abi.encode(due));
     }
 
-    /// @dev performData is untrusted: every owner is re-validated. One owner's failing
-    ///      transfer cannot block the rest of the batch.
+    /// @dev performData is untrusted: every owner is re-validated on-chain, duplicates are
+    ///      skipped (the first execution deactivates the guard), and one owner's or heir's
+    ///      failure cannot block anyone else.
     function performUpkeep(bytes calldata performData) external override nonReentrant {
-        if (msg.sender != forwarder) revert NotForwarder();
+        if (!isForwarder[msg.sender]) revert NotForwarder();
         address[] memory due = abi.decode(performData, (address[]));
-        uint256 n = due.length < MAX_BATCH ? due.length : MAX_BATCH;
+        uint256 n = due.length < MAX_EXECUTIONS_PER_UPKEEP ? due.length : MAX_EXECUTIONS_PER_UPKEEP;
+        uint256 executed;
         for (uint256 i; i < n; ++i) {
             address o = due[i];
             if (!isExpired(o)) continue; // BR-05
-            try this.executeFor(o) {}
-            catch (bytes memory reason) {
-                // Empty reason may mean out-of-gas: keep the guard active so it is retried.
-                // A real revert (e.g. blacklisted heir) deactivates it; funds stay with the owner.
-                if (reason.length > 0) _deactivate(o);
-                emit InheritanceFailed(o, reason);
+            uint256 needed = GAS_PER_OWNER + beneficiaries[o].length * GAS_PER_HEIR;
+            if (gasleft() < needed) {
+                if (executed == 0) revert InsufficientGas(needed);
+                break;
             }
+            _execute(o);
+            ++executed;
         }
-    }
-
-    /// @dev External only so performUpkeep can isolate failures with try/catch.
-    function executeFor(address o) external {
-        if (msg.sender != address(this)) revert OnlySelf();
-
-        GuardConfig memory g = guards[o];
-        Beneficiary[] memory bens = beneficiaries[o];
-        _deactivate(o); // effects before interactions
-
-        IERC20 token = IERC20(g.token);
-        uint256 balance = token.balanceOf(o);
-        uint256 allowance = token.allowance(o, address(this));
-        uint256 amount = balance < allowance ? balance : allowance; // BR-05
-
-        if (amount > 0) {
-            uint256 distributed;
-            uint256 last = bens.length - 1;
-            for (uint256 i; i < last; ++i) {
-                uint256 share = (amount * bens[i].bps) / TOTAL_BPS;
-                distributed += share;
-                if (share > 0) token.safeTransferFrom(o, bens[i].wallet, share);
-                emit BeneficiaryPaid(o, bens[i].wallet, share);
-            }
-            uint256 lastShare = amount - distributed; // BR-03: dust goes to the last heir
-            if (lastShare > 0) token.safeTransferFrom(o, bens[last].wallet, lastShare);
-            emit BeneficiaryPaid(o, bens[last].wallet, lastShare);
-        }
-
-        emit InheritanceExecuted(o, g.token, amount);
     }
 
     // ─── Admin ───────────────────────────────────────────────────────────────
 
-    function setForwarder(address f) external onlyOwner {
-        forwarder = f;
-        emit ForwarderUpdated(f);
+    function setForwarder(address f, bool allowed) external onlyOwner {
+        isForwarder[f] = allowed;
+        emit ForwarderUpdated(f, allowed);
     }
 
     // ─── Views ───────────────────────────────────────────────────────────────
+
+    /// @notice lastPingTimestamp + timeoutDuration, or 0 when the owner has no active guard.
+    function deadlineOf(address o) public view returns (uint256) {
+        GuardConfig storage g = guards[o];
+        return g.isActive ? g.lastPingTimestamp + g.timeoutDuration : 0;
+    }
 
     function isExpired(address o) public view returns (bool) {
         GuardConfig storage g = guards[o];
@@ -224,6 +229,49 @@ contract InheritanceGuard is AutomationCompatibleInterface, ReentrancyGuard, Own
     }
 
     // ─── Internal ────────────────────────────────────────────────────────────
+
+    function _execute(address o) internal {
+        GuardConfig memory g = guards[o];
+        Beneficiary[] memory bens = beneficiaries[o];
+        _deactivate(o); // effects before interactions
+
+        IERC20 token = IERC20(g.token);
+        (bool okB, uint256 balance) = _readUint(g.token, abi.encodeCall(IERC20.balanceOf, (o)));
+        (bool okA, uint256 allowance) = _readUint(g.token, abi.encodeCall(IERC20.allowance, (o, address(this))));
+        if (!okB || !okA) {
+            emit InheritanceFailed(o, abi.encodeWithSelector(TokenCallFailed.selector));
+            return;
+        }
+        uint256 amount = balance < allowance ? balance : allowance; // BR-05: zero is a no-op
+
+        uint256 paid;
+        if (amount > 0) {
+            uint256 distributed;
+            uint256 last = bens.length - 1;
+            for (uint256 i; i <= last; ++i) {
+                // BR-03: integer shares; the last heir receives the dust.
+                uint256 share = i == last ? amount - distributed : (amount * bens[i].bps) / TOTAL_BPS;
+                distributed += share;
+                if (share == 0) continue;
+                if (token.trySafeTransferFrom(o, bens[i].wallet, share)) {
+                    paid += share;
+                    emit BeneficiaryPaid(o, bens[i].wallet, share);
+                } else {
+                    emit BeneficiaryTransferFailed(o, bens[i].wallet, share);
+                }
+            }
+        }
+
+        emit InheritanceExecuted(o, g.token, paid);
+    }
+
+    /// @dev Static call returning a uint256; false on revert, missing code or short return data.
+    function _readUint(address target, bytes memory data) internal view returns (bool ok, uint256 value) {
+        bytes memory ret;
+        (ok, ret) = target.staticcall(data);
+        if (!ok || ret.length < 32) return (false, 0);
+        value = abi.decode(ret, (uint256));
+    }
 
     function _addActive(address o) internal {
         if (activeIndex[o] != 0) return;

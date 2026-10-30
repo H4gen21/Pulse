@@ -333,6 +333,19 @@
   .net-banner > span {
     flex: 1 1 200px;
   }
+  html.staging {
+    --staging-h: 31px;
+  }
+  /* Lives inside the sticky header, so it stays visible while scrolling. */
+  .staging-banner {
+    padding: 6px 16px;
+    background: #ffd84d;
+    color: #2a2100;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-align: center;
+  }
 
   /* buttons */
   .btn {
@@ -1299,7 +1312,7 @@
   @media (min-width: 1024px) {
     .layout .side.sticky {
       position: sticky;
-      top: calc(var(--safe-top) + 100px);
+      top: calc(var(--safe-top) + 100px + var(--staging-h, 0px));
     }
   }
 

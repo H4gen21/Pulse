@@ -4,7 +4,8 @@ import { TOTAL_BPS } from './split';
 
 export { TOTAL_BPS };
 
-// Mirrors InheritanceGuard.sol constants. Keep both in sync.
+// Mirrors InheritanceGuard.sol constants. Keep both in sync. The UI reads the real timeout
+// bounds from minTimeout()/maxTimeout() (hooks/useGuardContract); these are the fallback.
 export const DAY = 86_400;
 export const MIN_TIMEOUT_SEC = 60 * DAY; // BR-01
 export const MAX_TIMEOUT_SEC = 730 * DAY; // BR-01

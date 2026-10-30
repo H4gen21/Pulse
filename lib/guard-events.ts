@@ -9,6 +9,7 @@ export const GUARD_EVENTS = [
   'InheritanceExecuted',
   'InheritanceFailed',
   'BeneficiaryPaid',
+  'BeneficiaryTransferFailed',
 ] as const;
 export type GuardEventName = (typeof GUARD_EVENTS)[number];
 

@@ -9,6 +9,8 @@ import { calls, USDC_ADDRESS } from '@/lib/contract';
 import { deadlineOf } from '@/lib/guard-status';
 import type { GuardEvent } from '@/lib/guard-events';
 import { formatAmount, minBigint, splitAmount } from '@/lib/split';
+import { countdownParts, formatPeriod } from '@/lib/period';
+import { IS_STAGING } from '@/lib/pulse-env';
 import { shortAddr, txUrl } from '@/lib/explorer';
 import { Icon, type IconName } from '@/components/icons';
 import { Modal } from '@/components/Modal';
@@ -17,7 +19,7 @@ import { useToast } from '@/components/Toasts';
 import { EmptyCard, LoadingCard, StatusBadge, Trace, ago, fmtDate, useNow } from '@/components/vault/shared';
 
 const TOKEN = 'USDC';
-const DAY = 86_400;
+const period = (sec: number | bigint, adjective = false) => formatPeriod(Number(sec), { staging: IS_STAGING, adjective });
 
 export default function VaultPage() {
   return <AuthGate preview={<VaultPreview />}>{(owner) => <Dashboard owner={owner} />}</AuthGate>;
@@ -81,7 +83,7 @@ function Dashboard({ owner }: { owner: `0x${string}` }) {
       : splitAmount(movable, bps);
   const totalOut = amounts.reduce((a, b) => a + b, 0n);
   const emails = new Map(api.data?.beneficiaries.map((b) => [b.walletAddress.toLowerCase(), b.email]) ?? []);
-  const days = Number(config.timeoutDuration) / DAY;
+  const timeout = Number(config.timeoutDuration);
 
   return (
     <main className="app">
@@ -90,7 +92,7 @@ function Dashboard({ owner }: { owner: `0x${string}` }) {
           <div>
             <h1>Your vault</h1>
             <p className="muted">
-              {TOKEN}, {beneficiaries.length} {beneficiaries.length === 1 ? 'heir' : 'heirs'}, {days}-day period
+              {TOKEN}, {beneficiaries.length} {beneficiaries.length === 1 ? 'heir' : 'heirs'}, {period(timeout, true)} period
             </p>
           </div>
           <StatusBadge status={status} />
@@ -106,14 +108,14 @@ function Dashboard({ owner }: { owner: `0x${string}` }) {
                 beats={sinceSetup.filter((e) => e.name === 'Pinged' || e.name === 'GuardSetup').length}
                 now={now}
                 busy={pingFlow.busy}
-                onPing={() => pingFlow.start([{ label: 'Check in', detail: `Calls ping(). Your timer restarts at ${days} days.`, call: calls.ping, onConfirmed: refetchAll }])}
+                onPing={() => pingFlow.start([{ label: 'Check in', detail: `Calls ping(). Your timer restarts at ${period(timeout)}.`, call: calls.ping, onConfirmed: refetchAll }])}
               />
             ) : status === 'EXECUTED' ? (
               <section className="card pad" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <h2 style={{ fontSize: 24 }}>Inheritance executed</h2>
                 <p className="muted">
                   Chainlink Automation ran
-                  {sinceSetup[execIdx]?.timestamp ? ` on ${fmtDate(sinceSetup[execIdx].timestamp!)}` : ''} after {days} days
+                  {sinceSetup[execIdx]?.timestamp ? ` on ${fmtDate(sinceSetup[execIdx].timestamp!)}` : ''} after {period(timeout)}
                   of silence. {formatAmount(totalOut)} {TOKEN} was sent to your heirs.
                 </p>
                 <div><Link className="btn btn-ghost" href="/vault/create">Create a new vault</Link></div>
@@ -123,7 +125,7 @@ function Dashboard({ owner }: { owner: `0x${string}` }) {
                 <h2 style={{ fontSize: 24 }}>{guard.events.data?.latest === 'InheritanceFailed' ? 'Automatic transfer failed' : 'Vault revoked'}</h2>
                 <p className="muted">
                   {guard.events.data?.latest === 'InheritanceFailed'
-                    ? 'The transfer reverted, so the contract deactivated the vault. Nothing left your wallet.'
+                    ? 'The contract couldn’t read your token balance, so it deactivated the vault. Nothing left your wallet.'
                     : 'The timer is stopped and heirs can no longer inherit.'}{' '}
                   {allowance === 0n ? `Your ${TOKEN} approval is 0.` : `Your ${TOKEN} approval for Pulse is still ${formatAmount(allowance)}.`}
                 </p>
@@ -238,12 +240,7 @@ function TimerCard({ deadline, timeout, lastPing, beats, now, busy, onPing }: {
   deadline: number; timeout: number; lastPing: number; beats: number; now: number | null; busy: boolean; onPing: () => void;
 }) {
   const left = now === null ? timeout : Math.max(0, deadline - now);
-  const parts: [number, string][] = [
-    [Math.floor(left / DAY), 'days'],
-    [Math.floor((left % DAY) / 3600), 'hours'],
-    [Math.floor((left % 3600) / 60), 'min'],
-    [left % 60, 'sec'],
-  ];
+  const parts = countdownParts(left, IS_STAGING);
   const frac = 1 - left / timeout;
   const expired = now !== null && left === 0;
 
@@ -253,7 +250,7 @@ function TimerCard({ deadline, timeout, lastPing, beats, now, busy, onPing }: {
         <h2 id="t-h" style={{ fontSize: 17, fontWeight: 600, color: '#3B3260' }}>
           {expired ? 'Deadline passed' : 'Transfer starts in'}
         </h2>
-        <div className="count num" role="timer" aria-label={`${parts[0][0]} days, ${parts[1][0]} hours, ${parts[2][0]} minutes left`}>
+        <div className="count num" role="timer" aria-label={parts.length === 1 ? `${parts[0][0]} seconds left` : `${parts[0][0]} days, ${parts[1][0]} hours, ${parts[2][0]} minutes left`}>
           {parts.map(([v, unit], i) => (
             <div key={unit} aria-hidden="true">
               <b style={i === 0 ? { color: '#9E2418' } : undefined}>{now === null ? '–' : String(v).padStart(i === 0 ? 1 : 2, '0')}</b>
@@ -284,12 +281,13 @@ function TimerCard({ deadline, timeout, lastPing, beats, now, busy, onPing }: {
 }
 
 const EVENT_UI: Record<GuardEvent['name'], [IconName, (e: GuardEvent) => string]> = {
-  GuardSetup: ['shield', (e) => `Vault created: ${e.args.beneficiaryCount} heirs, ${Number(e.args.timeoutDuration as bigint) / DAY}-day period`],
+  GuardSetup: ['shield', (e) => `Vault created: ${e.args.beneficiaryCount} heirs, ${period(e.args.timeoutDuration as bigint, true)} period`],
   Pinged: ['heart', () => 'Checked in'],
   GuardRevoked: ['stop', () => 'Vault revoked'],
   InheritanceExecuted: ['send', (e) => `Chainlink Automation sent ${formatAmount(e.args.totalAmount as bigint)} ${String(e.args.token).toLowerCase() === USDC_ADDRESS.toLowerCase() ? TOKEN : 'tokens'}`],
   InheritanceFailed: ['alert', () => 'Automatic transfer failed. Nothing left your wallet'],
   BeneficiaryPaid: ['send', (e) => `Paid ${formatAmount(e.args.amount as bigint)} ${TOKEN} to ${shortAddr(e.args.wallet as string)}`],
+  BeneficiaryTransferFailed: ['alert', (e) => `Transfer of ${formatAmount(e.args.amount as bigint)} ${TOKEN} to ${shortAddr(e.args.wallet as string)} failed. It stayed in your wallet`],
 };
 
 function Activity({ events, loading, failed, now }: { events: GuardEvent[]; loading: boolean; failed: boolean; now: number | null }) {

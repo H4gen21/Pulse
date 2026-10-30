@@ -6,6 +6,8 @@ import { useGuardStatus, useVaultApi } from '@/hooks/useGuardContract';
 import { chain } from '@/lib/chain';
 import { USDC_ADDRESS } from '@/lib/contract';
 import { deadlineOf } from '@/lib/guard-status';
+import { formatPeriod } from '@/lib/period';
+import { IS_STAGING } from '@/lib/pulse-env';
 import { addressUrl, shortAddr, txUrl } from '@/lib/explorer';
 import { StatusBadge, fmtDate } from '@/components/vault/shared';
 
@@ -107,7 +109,7 @@ function VaultResult({ owner }: { owner: `0x${string}` }) {
       </div>
       <div className="grid-auto" style={{ marginTop: 20 }}>
         <div><span className="muted small">Token</span><div style={{ fontWeight: 600 }} className={isUsdc ? '' : 'addr'}>{isUsdc ? 'USDC' : config.token}</div></div>
-        <div><span className="muted small">Inactivity period</span><div style={{ fontWeight: 600 }}>{Number(config.timeoutDuration) / 86_400} days</div></div>
+        <div><span className="muted small">Inactivity period</span><div style={{ fontWeight: 600 }}>{formatPeriod(Number(config.timeoutDuration), { staging: IS_STAGING })}</div></div>
         <div><span className="muted small">Last check-in</span><div style={{ fontWeight: 600 }}>{fmtDate(config.lastPingTimestamp)}</div></div>
         <div>
           <span className="muted small">{status === 'ACTIVE' ? 'Transfer starts' : 'Deadline was'}</span>

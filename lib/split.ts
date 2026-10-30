@@ -1,5 +1,5 @@
 // Share math shared by the create form, the dashboard preview and the home calculator.
-// Mirrors InheritanceGuard.executeFor exactly: floor(amount * bps / 10_000) per heir,
+// Mirrors InheritanceGuard._execute exactly: floor(amount * bps / 10_000) per heir,
 // and the last heir receives `amount - distributed` (BR-03: dust to the last heir).
 
 export const TOTAL_BPS = 10_000; // BR-02

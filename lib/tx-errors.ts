@@ -1,10 +1,12 @@
 import { BaseError, ContractFunctionRevertedError, UserRejectedRequestError } from 'viem';
 import { chain } from './chain';
+import { IS_STAGING } from './pulse-env';
 
 // Readable messages for InheritanceGuard custom errors (lib/abi), keyed by error name.
 const MESSAGES: Record<string, (args: readonly unknown[]) => string> = {
   InvalidToken: () => 'The token address is invalid.',
-  InvalidTimeout: () => 'The period must be between 60 and 730 days.',
+  InvalidTimeout: () =>
+    IS_STAGING ? 'The period is outside the staging contract’s limits.' : 'The period must be between 60 and 730 days.',
   InvalidBeneficiaryCount: () => 'Add between 1 and 10 heirs.',
   InvalidBeneficiary: ([i]) =>
     `Heir ${Number(i) + 1} is invalid: it can't be empty, your own wallet, or less than 1%.`,
@@ -12,7 +14,7 @@ const MESSAGES: Record<string, (args: readonly unknown[]) => string> = {
   BpsSumMismatch: ([total]) => `Shares add up to ${Number(total) / 100}%. They must total exactly 100%.`,
   GuardNotActive: () => "You don't have an active vault.",
   NotForwarder: () => 'Only Chainlink Automation can do that.',
-  OnlySelf: () => 'Only the contract itself can do that.',
+  TokenCallFailed: () => 'The token contract did not respond as expected.',
 };
 
 /** Turn a wagmi/viem error into one sentence a person can act on. */

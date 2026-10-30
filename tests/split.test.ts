@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { bpsToPct, equalBps, formatAmount, parseAmount, pctToBps, splitAmount, TOTAL_BPS } from '@/lib/split';
 
-// Reference implementation copied from InheritanceGuard.executeFor, line for line.
+// Reference implementation copied from InheritanceGuard._execute, line for line.
 function contractSplit(amount: bigint, bps: number[]): bigint[] {
   const out: bigint[] = [];
   let distributed = 0n;

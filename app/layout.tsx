@@ -6,6 +6,7 @@ import { Navbar } from '@/components/Navbar';
 import { Footer } from '@/components/Footer';
 import { NetworkBanner } from '@/components/NetworkBanner';
 import { themeScript } from '@/components/ThemeProvider';
+import { IS_STAGING } from '@/lib/pulse-env';
 
 const figtree = Figtree({
   subsets: ['latin'],
@@ -31,7 +32,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={figtree.variable} suppressHydrationWarning>
+    <html lang="en" className={IS_STAGING ? `${figtree.variable} staging` : figtree.variable} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>

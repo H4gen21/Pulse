@@ -5,6 +5,7 @@ import { chain } from '@/lib/chain';
 import { erc20Abi, guardAbi, GUARD_ADDRESS, USDC_ADDRESS } from '@/lib/contract';
 import { fetchGuardEvents, latestTerminal, withTimestamps } from '@/lib/guard-events';
 import { deriveStatus, toGuardConfig, type GuardStatus } from '@/lib/guard-status';
+import { MAX_TIMEOUT_SEC, MIN_TIMEOUT_SEC } from '@/lib/validation';
 
 export type Beneficiary = { wallet: `0x${string}`; bps: number };
 
@@ -31,6 +32,29 @@ export function useGuard(owner?: `0x${string}`) {
     isLoading: reads.isLoading,
     error: reads.error,
     refetch: reads.refetch,
+  };
+}
+
+/**
+ * BR-01 bounds in seconds, read from the deployed contract (60/730 days in production,
+ * 15 s/730 days on InheritanceGuardStaging). Until the read lands, or if the contract
+ * predates these getters, it falls back to the production constants.
+ */
+export function useTimeoutBounds() {
+  const reads = useReadContracts({
+    allowFailure: false,
+    contracts: [
+      { chainId: chain.id, address: GUARD_ADDRESS, abi: guardAbi, functionName: 'minTimeout' },
+      { chainId: chain.id, address: GUARD_ADDRESS, abi: guardAbi, functionName: 'maxTimeout' },
+    ],
+    query: { staleTime: Infinity },
+  });
+  const [min, max] = (reads.data ?? []) as unknown as [bigint | undefined, bigint | undefined];
+  return {
+    min: min === undefined ? MIN_TIMEOUT_SEC : Number(min),
+    max: max === undefined ? MAX_TIMEOUT_SEC : Number(max),
+    fromContract: min !== undefined && max !== undefined,
+    isLoading: reads.isLoading,
   };
 }
 

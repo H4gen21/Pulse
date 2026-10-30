@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuthGuard } from '@/hooks/useAuthGuard';
 import { Icon, Logo } from './icons';
+import { StagingBanner } from './StagingBanner';
 import { useTheme } from './ThemeProvider';
 import { WalletButton } from './WalletButton';
 
@@ -23,6 +24,7 @@ export function Navbar() {
 
   return (
     <header className="top">
+      <StagingBanner />
       <div className="wrap topbar">
         <Link className="brand" href="/" aria-label="Pulse home">
           <Logo />

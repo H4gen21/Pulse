@@ -32,7 +32,9 @@ jobs:
       - run: pnpm install --frozen-lockfile # OpenZeppelin + Chainlink sources
       - run: git clone --depth 1 https://github.com/foundry-rs/forge-std lib-sol/forge-std
       - uses: foundry-rs/foundry-toolchain@v1
-      - run: forge fmt --check contracts test
+      - name: Staging contract is only imported from contracts/testnet and test
+        run: pnpm check:staging
+      - run: forge fmt --check contracts test script
       - run: forge build --sizes
       - name: ABI in lib/abi matches the contract
         run: pnpm abi:gen && git diff --exit-code lib/abi
