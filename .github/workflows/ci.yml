@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Build-time placeholders only; real values live in Vercel. Deploys run via Vercel's Git integration.
+  DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+  DIRECT_URL: postgresql://ci:ci@localhost:5432/ci
+  NEXTAUTH_SECRET: ci-only-secret
+  NEXTAUTH_URL: http://localhost:3000
+  NEXT_PUBLIC_CHAIN_ID: "84532"
+  NEXT_PUBLIC_GUARD_CONTRACT_ADDRESS: "0x0000000000000000000000000000000000000001"
+  NEXT_PUBLIC_USDC_CONTRACT_ADDRESS: "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+
+jobs:
+  contracts:
+    name: Contracts (Foundry)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: pnpm }
+      - run: pnpm install --frozen-lockfile # OpenZeppelin + Chainlink sources
+      - run: git clone --depth 1 https://github.com/foundry-rs/forge-std lib-sol/forge-std
+      - uses: foundry-rs/foundry-toolchain@v1
+      - run: forge fmt --check contracts test
+      - run: forge build --sizes
+      - name: ABI in lib/abi matches the contract
+        run: pnpm abi:gen && git diff --exit-code lib/abi
+      - run: forge test -vvv
+      - run: forge coverage --report summary
+
+  web:
+    name: Web (lint, types, unit, build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build

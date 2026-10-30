@@ -1,0 +1,83 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // pooled (Supabase pgbouncer, port 6543)
+  directUrl = env("DIRECT_URL") // direct (port 5432), used by migrations
+}
+
+// Off-chain cache + notification state. The InheritanceGuard contract is the source of truth.
+
+enum VaultStatus {
+  UNCONFIGURED
+  ACTIVE
+  REVOKED
+  EXECUTED
+}
+
+enum NotificationEvent {
+  GUARD_SETUP
+  INHERITANCE_EXECUTED
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model Owner {
+  id            String   @id @default(cuid())
+  walletAddress String   @unique // lowercase 0x address, set from the SIWE session
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  vault         Vault?
+}
+
+// One vault per owner, mirroring the contract's one-guard-per-address model.
+model Vault {
+  id              String        @id @default(cuid())
+  ownerId         String        @unique
+  owner           Owner         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  chainId         Int
+  timeoutDuration Int // seconds
+  tokenAddress    String
+  status          VaultStatus   @default(UNCONFIGURED)
+  lastPingAt      DateTime?
+  txHash          String?       @unique // setupGuard transaction
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  beneficiaries   Beneficiary[]
+  notifications   NotificationLog[]
+}
+
+model Beneficiary {
+  id              String  @id @default(cuid())
+  vaultId         String
+  vault           Vault   @relation(fields: [vaultId], references: [id], onDelete: Cascade)
+  position        Int // on-chain order; the last position receives the dust (BR-03)
+  walletAddress   String
+  bpsShare        Int
+  email           String?
+  hasBeenNotified Boolean @default(false)
+
+  @@unique([vaultId, position])
+  @@unique([vaultId, walletAddress])
+}
+
+// BR-06: the unique key makes each (event tx, recipient) notification idempotent.
+model NotificationLog {
+  id             String             @id @default(cuid())
+  vaultId        String
+  vault          Vault              @relation(fields: [vaultId], references: [id], onDelete: Cascade)
+  eventType      NotificationEvent
+  eventTxHash    String
+  recipientEmail String
+  status         NotificationStatus @default(PENDING)
+  sentAt         DateTime?
+  createdAt      DateTime           @default(now())
+
+  @@unique([eventType, eventTxHash, recipientEmail])
+}
