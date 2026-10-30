@@ -1,7 +1,8 @@
 'use client';
 import Link from 'next/link';
 import { useState } from 'react';
-import { useAuthGuard } from '@/hooks/useAuthGuard';
+import { AuthGate } from '@/components/AuthGate';
+import { VaultPreview } from '@/components/vault/previews';
 import { useGuardStatus, useUsdc, useVaultApi } from '@/hooks/useGuardContract';
 import { useTxFlow } from '@/hooks/useTxFlow';
 import { calls, USDC_ADDRESS } from '@/lib/contract';
@@ -13,14 +14,16 @@ import { Icon, type IconName } from '@/components/icons';
 import { Modal } from '@/components/Modal';
 import { TxModal } from '@/components/TxModal';
 import { useToast } from '@/components/Toasts';
-import { EmptyCard, LoadingCard, SignInCard, StatusBadge, Trace, ago, fmtDate, useNow } from '@/components/vault/shared';
+import { EmptyCard, LoadingCard, StatusBadge, Trace, ago, fmtDate, useNow } from '@/components/vault/shared';
 
 const TOKEN = 'USDC';
 const DAY = 86_400;
 
 export default function VaultPage() {
-  const { address, isConnected, isConnecting, needsSignIn } = useAuthGuard();
-  const owner = needsSignIn ? undefined : address;
+  return <AuthGate preview={<VaultPreview />}>{(owner) => <Dashboard owner={owner} />}</AuthGate>;
+}
+
+function Dashboard({ owner }: { owner: `0x${string}` }) {
   const guard = useGuardStatus(owner);
   const usdc = useUsdc(owner);
   const api = useVaultApi(owner);
@@ -41,8 +44,6 @@ export default function VaultPage() {
   const revokeFlow = useTxFlow({ onDone: () => toast('Vault revoked and approval set to 0.') });
   const resetFlow = useTxFlow({ onDone: () => toast('Approval set to 0.') });
 
-  if (!isConnected || isConnecting) return isConnecting ? <LoadingCard label="Connecting wallet…" /> : null;
-  if (needsSignIn) return <SignInCard title="Sign in to see your vault" />;
   if (guard.isLoading) return <LoadingCard />;
   if (guard.error)
     return (

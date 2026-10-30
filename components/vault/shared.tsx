@@ -1,5 +1,4 @@
 'use client';
-import { useConnectModal } from '@rainbow-me/rainbowkit';
 import { useEffect, useState, type ReactNode } from 'react';
 import type { GuardStatus } from '@/lib/guard-status';
 import { Icon, type IconName } from '../icons';
@@ -18,24 +17,6 @@ export function EmptyCard({ icon, title, children, action }: { icon: IconName; t
         </div>
       </div>
     </main>
-  );
-}
-
-/** Connected but no SIWE session (or a session for a different wallet). */
-export function SignInCard({ title }: { title: string }) {
-  const { openConnectModal } = useConnectModal();
-  return (
-    <EmptyCard
-      icon="wallet"
-      title={title}
-      action={
-        <button className="btn btn-primary" type="button" onClick={openConnectModal} disabled={!openConnectModal}>
-          Sign in with your wallet
-        </button>
-      }
-    >
-      Sign a short message so Pulse knows this vault is yours. Signing is free and sends no transaction.
-    </EmptyCard>
   );
 }
 

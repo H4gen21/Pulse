@@ -1,14 +1,47 @@
 import type { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
-import { getCsrfToken } from 'next-auth/react';
+import { createHash } from 'node:crypto';
 import { parseSiweMessage } from 'viem/siwe';
 import { publicClient } from './chain';
 import { prisma } from './prisma';
 
-function appHost() {
-  const url = process.env.NEXTAUTH_URL ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
-  return new URL(url).host;
+/**
+ * Hosts a SIWE message may name: NEXTAUTH_URL plus Vercel's production, branch and deployment
+ * hosts. VERCEL_URL alone is the per-deployment host, not the production alias users visit.
+ */
+export function allowedHosts(env: Record<string, string | undefined> = process.env) {
+  const hosts = new Set<string>();
+  for (const u of [env.NEXTAUTH_URL, env.VERCEL_PROJECT_PRODUCTION_URL, env.VERCEL_BRANCH_URL, env.VERCEL_URL]) {
+    if (!u) continue;
+    try {
+      hosts.add(new URL(u.includes('://') ? u : `https://${u}`).host);
+    } catch {
+      // ignore malformed values
+    }
+  }
+  if (!hosts.size) hosts.add('localhost:3000');
+  return hosts;
 }
+
+/**
+ * The NextAuth CSRF token, read from its signed cookie (`token|sha256(token + secret)`).
+ * Replaces getCsrfToken(), which fetched /api/auth/csrf over HTTP from NEXTAUTH_URL/VERCEL_URL.
+ */
+export function csrfNonce(cookieHeader: string | undefined, secret = process.env.NEXTAUTH_SECRET): string | null {
+  if (!cookieHeader || !secret) return null;
+  for (const part of cookieHeader.split(';')) {
+    const [name, ...rest] = part.trim().split('=');
+    if (name !== '__Host-next-auth.csrf-token' && name !== 'next-auth.csrf-token') continue;
+    const [token, hash] = decodeURIComponent(rest.join('=')).split('|');
+    if (token && hash === createHash('sha256').update(`${token}${secret}`).digest('hex')) return token;
+  }
+  return null;
+}
+
+const header = (headers: Record<string, unknown> | undefined, name: string) => {
+  const v = headers?.[name];
+  return typeof v === 'string' ? v : undefined;
+};
 
 // Sign-In With Ethereum (EIP-4361). The wallet address is the user's identity;
 // the NextAuth CSRF token doubles as the single-use SIWE nonce.
@@ -24,8 +57,10 @@ const siweProvider = CredentialsProvider({
     try {
       const message = credentials.message;
       const { address, domain, expirationTime } = parseSiweMessage(message);
-      const nonce = await getCsrfToken({ req: { headers: req.headers } });
-      if (!address || !nonce || domain !== appHost()) return null;
+      const nonce = csrfNonce(header(req.headers, 'cookie'));
+      // The message must name the host this request arrived on, and that host must be ours.
+      const host = header(req.headers, 'x-forwarded-host')?.split(',')[0].trim() ?? header(req.headers, 'host');
+      if (!address || !nonce || !domain || domain !== host || !allowedHosts().has(domain)) return null;
       if (expirationTime && expirationTime.getTime() < Date.now()) return null;
 
       // verifySiweMessage checks nonce, domain, time window and the signature
@@ -34,7 +69,7 @@ const siweProvider = CredentialsProvider({
         message,
         signature: credentials.signature as `0x${string}`,
         nonce,
-        domain: appHost(),
+        domain,
       });
       if (!valid) return null;
 

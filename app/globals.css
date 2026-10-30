@@ -1450,6 +1450,113 @@
   }
 }
 
+/* ─── Locked preview (components/AuthGate.tsx) ─────────────────────────────── */
+@layer components {
+  .gate {
+    position: relative;
+    overflow: hidden;
+  }
+  .gate-preview {
+    max-height: 980px;
+    overflow: hidden;
+    filter: blur(8px);
+    pointer-events: none;
+    user-select: none;
+    -webkit-mask-image: linear-gradient(#000 70%, transparent);
+    mask-image: linear-gradient(#000 70%, transparent);
+  }
+  .gate-h1 {
+    font-size: clamp(2.1rem, 4.4vw, 3.4rem);
+    font-weight: 600;
+    letter-spacing: -0.035em;
+    line-height: 1.1;
+  }
+  .gate-veil {
+    position: absolute;
+    inset: 0;
+    background: var(--bg);
+    opacity: 0.35;
+    pointer-events: none;
+  }
+  /* No CSS filter support: a near-opaque veil hides the sample content instead of blurring it. */
+  @supports not ((filter: blur(8px)) or (-webkit-filter: blur(8px))) {
+    .gate-veil {
+      opacity: 0.9;
+    }
+  }
+  .gate-center {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: clamp(96px, 18vh, 200px) var(--gutter) 0;
+  }
+  .gate-card {
+    width: 100%;
+    max-width: 440px;
+    padding: 28px 22px;
+    border-radius: var(--r-lg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    text-align: center;
+    animation: gate-in 0.35s ease-out both;
+  }
+  @media (min-width: 640px) {
+    .gate-card {
+      padding: 36px 32px;
+    }
+  }
+  .gate-card h1 {
+    font-size: clamp(1.5rem, 4vw, 1.9rem);
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    line-height: 1.15;
+  }
+  .gate-card .btn {
+    margin-top: 6px;
+  }
+  .gate-lock {
+    display: grid;
+    place-items: center;
+    width: 52px;
+    height: 52px;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent-ink);
+  }
+  @keyframes gate-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px) scale(0.98);
+    }
+  }
+  .gate-skel i {
+    display: block;
+    border-radius: var(--r-md);
+    background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface) 50%, var(--surface-2) 75%);
+    background-size: 200% 100%;
+    animation: gate-shimmer 1.4s linear infinite;
+  }
+  @keyframes gate-shimmer {
+    to {
+      background-position: -200% 0;
+    }
+  }
+  .pillnav .lock {
+    display: inline-flex;
+    flex: none;
+    margin-left: 6px;
+    color: var(--muted);
+  }
+  /* The global svg max-width lets the icon collapse to 0 when the scrolling nav shrinks links. */
+  .pillnav .lock svg {
+    max-width: none;
+  }
+}
+
 /* ─── Reduced motion: no bobbing, parallax, reveal, hover lifts or spinners ── */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -1485,5 +1592,9 @@
   }
   .spinner {
     animation: spin 1.6s linear infinite !important;
+  }
+  .gate-card,
+  .gate-skel i {
+    animation: none !important;
   }
 }

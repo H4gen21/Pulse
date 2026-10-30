@@ -10,12 +10,13 @@ import {
 } from '@rainbow-me/rainbowkit';
 import { WagmiProvider } from 'wagmi';
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
-import { SessionProvider, getCsrfToken, signIn, signOut, useSession } from 'next-auth/react';
+import { SessionProvider, getCsrfToken, signIn, signOut } from 'next-auth/react';
 import { createSiweMessage } from 'viem/siwe';
 import { config } from '@/lib/wagmi';
 import { ReactNode, useState } from 'react';
 import { ThemeProvider, useTheme } from '@/components/ThemeProvider';
 import { ToastProvider } from '@/components/Toasts';
+import { useAuthGuard } from '@/hooks/useAuthGuard';
 
 const rkOptions = { accentColor: '#AB9FF2', accentColorForeground: '#1E173A', borderRadius: 'large' } as const;
 
@@ -43,7 +44,10 @@ const siweAdapter = createAuthenticationAdapter({
 });
 
 function WalletProviders({ children }: { children: ReactNode }) {
-  const { status } = useSession();
+  // RainbowKit's status comes from the NextAuth session, and only counts as authenticated when
+  // the session belongs to the connected wallet. Otherwise the button offers "Sign in".
+  const { state, signedIn } = useAuthGuard();
+  const status = state === 'loading' ? 'loading' : signedIn ? 'authenticated' : 'unauthenticated';
   const { theme } = useTheme();
   return (
     <RainbowKitAuthenticationProvider adapter={siweAdapter} status={status}>

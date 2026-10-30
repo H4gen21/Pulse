@@ -1,34 +1,33 @@
 'use client';
 
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import { useAccount } from 'wagmi';
 import { useSession } from 'next-auth/react';
+import { chain } from '@/lib/chain';
+
+/** loading → disconnected → wrong-network → signed-out → ready. Drives <AuthGate> and the nav locks. */
+export type GateState = 'loading' | 'disconnected' | 'wrong-network' | 'signed-out' | 'ready';
+
+export const sameAddress = (a?: string | null, b?: string | null) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
 
 /**
- * Gate for owner-only pages. "Authenticated" means the wallet is connected AND
- * a SIWE session exists for that same address (so API calls will be authorized).
+ * Where the visitor stands with owner-only pages. Never redirects: pages render a locked
+ * preview instead. "Signed in" means a SIWE session for the wallet that is connected right now.
  */
-export function useAuthGuard({ redirectTo = '/' }: { redirectTo?: string } = {}) {
-  const router = useRouter();
-  const { address, isConnected, isConnecting, isReconnecting } = useAccount();
+export function useAuthGuard() {
+  const { address, isConnected, isReconnecting, chainId } = useAccount();
   const { data: session, status } = useSession();
 
-  const isLoading = isConnecting || isReconnecting || status === 'loading';
-  const sessionMatchesWallet =
-    !!address && !!session?.address && session.address.toLowerCase() === address.toLowerCase();
-  const isAuthenticated = isConnected && status === 'authenticated' && sessionMatchesWallet;
+  const signedIn = isConnected && status === 'authenticated' && sameAddress(session?.address, address);
+  const state: GateState =
+    status === 'loading' || isReconnecting
+      ? 'loading'
+      : !isConnected || !address
+        ? 'disconnected'
+        : chainId !== chain.id
+          ? 'wrong-network'
+          : signedIn
+            ? 'ready'
+            : 'signed-out';
 
-  useEffect(() => {
-    if (!isLoading && !isConnected) router.replace(redirectTo);
-  }, [isLoading, isConnected, redirectTo, router]);
-
-  return {
-    address,
-    isConnected,
-    isConnecting: isLoading,
-    isAuthenticated,
-    /** Connected, but the SIWE signature is still needed (or belongs to another wallet). */
-    needsSignIn: isConnected && !isLoading && !isAuthenticated,
-  };
+  return { address, state, signedIn };
 }

@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-// /vault and /vault/create need a SIWE session; without one, middleware redirects to /.
+// /vault and /vault/create render a locked preview for signed-out visitors (no redirect).
 const PAGES = ['/', '/vault', '/vault/create', '/verify'];
 
 const REQUIRED = [
@@ -32,6 +32,73 @@ for (const viewport of REQUIRED) {
     }
   });
 }
+
+const LOCKED = [
+  { path: '/vault', title: 'Connect your wallet to see your vault' },
+  { path: '/vault/create', title: 'Connect your wallet to create a vault' },
+];
+
+for (const viewport of REQUIRED) {
+  test.describe(`signed out, ${viewport.width}px`, () => {
+    test.use({ viewport });
+    for (const { path, title } of LOCKED) {
+      test(`${path} shows the lock card without redirecting`, async ({ page }) => {
+        const res = await page.goto(path);
+        expect(res?.status()).toBe(200);
+        const card = page.locator('.gate-card');
+        await expect(card.getByRole('heading', { name: title })).toBeVisible();
+        await expect(card.getByRole('button', { name: 'Connect wallet' })).toBeVisible();
+        expect(new URL(page.url()).pathname).toBe(path);
+        expect(new URL(page.url()).search).toBe('');
+
+        const preview = page.locator('.gate-preview');
+        await expect(preview).toHaveAttribute('aria-hidden', 'true');
+        await expect(preview).toHaveAttribute('inert', '');
+        expect(await preview.evaluate((el) => getComputedStyle(el).pointerEvents)).toBe('none');
+        await expectNoHorizontalOverflow(page);
+      });
+    }
+  });
+}
+
+test('lock card is reachable by keyboard and nothing in the preview takes focus', async ({ page }) => {
+  await page.goto('/vault');
+  const button = page.locator('.gate-card').getByRole('button', { name: 'Connect wallet' });
+  await expect(button).toBeVisible();
+  for (let i = 0; i < 25; i++) {
+    await page.keyboard.press('Tab');
+    expect(await page.evaluate(() => !!document.activeElement?.closest('.gate-preview'))).toBe(false);
+    if (await button.evaluate((el) => el === document.activeElement)) break;
+  }
+  await expect(button).toBeFocused();
+  expect(await button.evaluate((el) => el.matches(':focus-visible'))).toBe(true);
+});
+
+test('nav links stay clickable and show a lock while signed out', async ({ page }) => {
+  await page.goto('/');
+  const nav = page.getByRole('navigation', { name: 'Main' });
+  await expect(nav.getByRole('link', { name: 'Dashboard (sign-in required)' })).toBeVisible();
+  await expect(nav.getByRole('link', { name: 'Create vault (sign-in required)' })).toBeVisible();
+  await expect(nav.getByRole('link', { name: 'Verify', exact: true })).toBeVisible();
+  await nav.getByRole('link', { name: /Dashboard/ }).click();
+  await expect(page).toHaveURL(/\/vault$/);
+  await expect(page.locator('.gate-card')).toBeVisible();
+});
+
+test('legacy /dashboard and /setup still redirect to the vault pages', async ({ page }) => {
+  await page.goto('/dashboard');
+  await expect(page).toHaveURL(/\/vault$/);
+  await page.goto('/setup');
+  await expect(page).toHaveURL(/\/vault\/create$/);
+});
+
+test('protected API writes return 401 without a session', async ({ request }) => {
+  for (const method of ['post', 'put', 'patch', 'delete'] as const) {
+    const res = await request[method]('/api/vault', { data: { chainId: 84532, txHash: `0x${'1'.repeat(64)}`, beneficiaries: [] } });
+    expect(res.status(), method).toBe(401);
+  }
+  expect(await (await request.get('/api/auth/session')).json()).toEqual({});
+});
 
 test.describe('extra widths', () => {
   for (const width of EXTRA_WIDTHS) {

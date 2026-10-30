@@ -3,7 +3,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useId, useState } from 'react';
 import { isAddress } from 'viem';
-import { useAuthGuard } from '@/hooks/useAuthGuard';
+import { AuthGate } from '@/components/AuthGate';
+import { CreatePreview } from '@/components/vault/previews';
 import { useGuardStatus, useUsdc } from '@/hooks/useGuardContract';
 import { useTxFlow } from '@/hooks/useTxFlow';
 import { chain } from '@/lib/chain';
@@ -14,7 +15,7 @@ import { DAY, DEFAULT_TIMEOUT_DAYS, MAX_BENEFICIARIES, validateHeirs } from '@/l
 import { Icon } from '@/components/icons';
 import { TxModal } from '@/components/TxModal';
 import { useToast } from '@/components/Toasts';
-import { EmptyCard, LoadingCard, SignInCard } from '@/components/vault/shared';
+import { EmptyCard, LoadingCard } from '@/components/vault/shared';
 
 const TOKEN = 'USDC';
 const PRESETS: [number, string][] = [[90, '90 days'], [180, '180 days'], [365, '1 year'], [730, '2 years']];
@@ -24,8 +25,14 @@ type Heir = { wallet: string; email: string; pct: string };
 const blank = (pct: string): Heir => ({ wallet: '', email: '', pct });
 
 export default function CreateVaultPage() {
-  const { address, isConnected, isConnecting, needsSignIn } = useAuthGuard();
-  const owner = needsSignIn ? undefined : address;
+  return (
+    <AuthGate preview={<CreatePreview />} purpose="create a vault">
+      {(owner) => <CreateVault owner={owner} />}
+    </AuthGate>
+  );
+}
+
+function CreateVault({ owner }: { owner: `0x${string}` }) {
   const guard = useGuardStatus(owner);
   const usdc = useUsdc(owner);
   const router = useRouter();
@@ -48,7 +55,7 @@ export default function CreateVaultPage() {
   const approved = amt !== null && amt > 0n && allowance === amt;
   const bps = heirs.map((h) => pctToBps(h.pct) ?? 0);
   const total = bps.reduce((a, b) => a + b, 0);
-  const heirErr = validateHeirs(address, heirs.map((h, i) => ({ wallet: h.wallet.trim(), bps: bps[i] })));
+  const heirErr = validateHeirs(owner, heirs.map((h, i) => ({ wallet: h.wallet.trim(), bps: bps[i] })));
   const problems: string[] = [];
   if (amt === null || amt === 0n) problems.push('Enter an approval amount above 0.');
   else if (!approved) problems.push(`Approve ${formatAmount(amt)} ${TOKEN} in step 1.`);
@@ -93,8 +100,6 @@ export default function CreateVaultPage() {
     }
   }
 
-  if (!isConnected || isConnecting) return isConnecting ? <LoadingCard label="Connecting wallet…" /> : null;
-  if (needsSignIn) return <SignInCard title="Sign in to create a vault" />;
   if (guard.isLoading) return <LoadingCard />;
   if (guard.status === 'ACTIVE' && !createFlow.busy && !saveError)
     return (
