@@ -1,0 +1,697 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SlabLock</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lexend+Deca:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+:root{
+  color-scheme:light;
+  --bg:#F7F6FD; --card:#FFFFFF; --ink:#1C1A2E; --ink-2:#6E6A85; --line:#ECEAF5;
+  --violet:#5F33E1; --violet-2:#7B5BF0; --violet-soft:#EEE9FF;
+  --pink:#E94E9B;  --pink-soft:#FFE4F2;
+  --sky:#0087FF;   --sky-soft:#E7F3FF;
+  --peach:#FF7D53; --peach-soft:#FFEDE5;
+  --mint:#12A160;  --mint-soft:#E2FAEE;
+  --red:#E8354F;   --red-soft:#FFE6EA;
+  --amber:#E08A00; --amber-soft:#FFF3DC;
+  --display:"Lexend Deca",system-ui,sans-serif;
+  --body:"Manrope",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  --shadow:0 10px 30px -12px rgba(60,40,140,.18);
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg)}
+body{font:15px/1.55 var(--body);color:var(--ink);min-height:100vh;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background:
+    radial-gradient(420px 360px at 8% 6%,rgba(186,240,214,.75),transparent 70%),
+    radial-gradient(460px 380px at 96% 12%,rgba(214,203,255,.8),transparent 70%),
+    radial-gradient(420px 360px at 90% 88%,rgba(255,226,196,.7),transparent 70%),
+    radial-gradient(420px 380px at 4% 92%,rgba(204,232,255,.8),transparent 70%)}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+input{font:inherit}
+:focus-visible{outline:3px solid rgba(95,51,225,.45);outline-offset:2px;border-radius:12px}
+[hidden]{display:none!important}
+
+/* Type scale */
+h1{font:600 30px/1.18 var(--display);letter-spacing:-.025em}
+h2{font:600 22px/1.25 var(--display);letter-spacing:-.02em}
+h3{font:600 17px/1.3 var(--display);letter-spacing:-.01em}
+.t-sm{font-size:13px}
+.t-xs{font-size:12px}
+.muted{color:var(--ink-2)}
+.mono{font:500 12px/1.4 var(--mono);letter-spacing:-.02em}
+
+.wrap{max-width:1040px;margin:0 auto;padding:20px 20px calc(120px + env(safe-area-inset-bottom,0px))}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;height:54px;padding:0 24px;border-radius:16px;font:600 16px var(--display);transition:transform .12s,background .15s,box-shadow .15s}
+.btn:active{transform:scale(.98)}
+.btn-primary{background:var(--violet);color:#fff;box-shadow:0 12px 24px -10px rgba(95,51,225,.65)}
+.btn-primary:hover{background:#5229D6}
+.btn-light{background:var(--card);color:var(--violet);height:44px;border-radius:12px;font-size:15px;padding:0 18px}
+.btn-soft{background:var(--violet-soft);color:var(--violet)}
+.btn-block{width:100%}
+.icon-btn{width:44px;height:44px;border-radius:14px;display:grid;place-items:center;background:var(--card);box-shadow:var(--shadow)}
+
+/* ---------- Auth ---------- */
+#auth{min-height:100vh;display:grid;place-items:center;padding:32px 24px}
+.auth-inner{width:100%;max-width:400px;text-align:center}
+.hero-art{position:relative;height:330px;margin-bottom:12px}
+.art-slab{position:absolute;left:50%;top:28px;width:168px;height:252px;margin-left:-84px;transform:rotate(-6deg);background:var(--card);border-radius:20px;padding:12px;box-shadow:0 30px 60px -20px rgba(60,40,140,.35)}
+.art-slab .lab{height:44px;border-radius:10px;background:var(--violet-soft);display:flex;align-items:center;justify-content:space-between;padding:0 12px}
+.art-slab .lab i{display:block;height:6px;border-radius:3px;background:var(--violet);opacity:.35}
+.art-slab .lab b{font:700 22px var(--display);color:var(--violet)}
+.art-slab .win{margin-top:10px;height:170px;border-radius:12px;background:linear-gradient(150deg,#FFB36B,#FF6F91 55%,#9B6BFF)}
+.float{position:absolute;border-radius:16px;background:var(--card);box-shadow:var(--shadow);display:flex;align-items:center;gap:8px;padding:10px 14px;font:600 13px var(--display)}
+.f1{left:4%;top:70px;transform:rotate(-4deg)}
+.f2{right:2%;top:150px;transform:rotate(5deg)}
+.f3{left:10%;bottom:30px}
+.dot{position:absolute;width:10px;height:10px;border-radius:50%}
+.badge-ic{width:26px;height:26px;border-radius:9px;display:grid;place-items:center}
+.auth-inner p{color:var(--ink-2);margin:12px auto 32px;max-width:32ch}
+.g-btn{background:var(--card);color:var(--ink);box-shadow:var(--shadow);border:1px solid var(--line)}
+.g-btn:hover{border-color:#D8D3EE}
+.auth-note{margin-top:16px;font-size:12px;color:var(--ink-2)}
+.spinner{width:18px;height:18px;border-radius:50%;border:2.5px solid currentColor;border-right-color:transparent;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Account chooser */
+dialog{margin:auto;border:0;border-radius:24px;background:var(--card);color:var(--ink);width:min(400px,calc(100% - 32px));padding:0;box-shadow:0 40px 80px -20px rgba(28,26,46,.45)}
+dialog::backdrop{background:rgba(28,26,46,.35);backdrop-filter:blur(3px)}
+.acct-head{padding:28px 28px 16px;text-align:center}
+.acct-head p{color:var(--ink-2);font-size:14px;margin-top:4px}
+.acct{display:flex;align-items:center;gap:14px;width:100%;text-align:left;padding:14px 28px;border-top:1px solid var(--line)}
+.acct:hover{background:#FAF9FF}
+.avatar{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;font:600 15px var(--display);color:#fff;flex:none}
+.acct b{display:block;font:600 15px var(--display)}
+.acct div span{font-size:13px;color:var(--ink-2)}
+.acct-foot{padding:14px 28px 22px;border-top:1px solid var(--line);font-size:12px;color:var(--ink-2)}
+
+/* ---------- App header ---------- */
+.top{display:flex;align-items:center;gap:14px;margin-bottom:24px}
+.top .hello{flex:1}
+.top .hello small{display:block;font-size:14px;color:var(--ink-2)}
+.top .hello b{font:600 20px var(--display);letter-spacing:-.015em}
+.bell{position:relative}
+.bell::after{content:"";position:absolute;top:11px;right:12px;width:8px;height:8px;border-radius:50%;background:var(--violet);border:2px solid var(--card)}
+.page-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px}
+.page-top h2{flex:1;text-align:center}
+.page-top .spacer{width:44px}
+
+/* ---------- Dashboard ---------- */
+.dash{display:grid;gap:28px;grid-template-columns:minmax(0,1fr)}
+@media (min-width:900px){.dash{grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);align-items:start}.dash .span{grid-column:1/-1}}
+.hero{background:var(--violet);color:#fff;border-radius:24px;padding:24px;display:flex;align-items:center;gap:18px;box-shadow:0 24px 40px -20px rgba(95,51,225,.7);position:relative;overflow:hidden}
+.hero::after{content:"";position:absolute;right:-60px;top:-60px;width:200px;height:200px;border-radius:50%;background:rgba(255,255,255,.08)}
+.hero .txt{flex:1;position:relative;z-index:1}
+.hero h3{font-size:19px;line-height:1.35;font-weight:500;margin-bottom:18px;max-width:18ch}
+.hero .ringwrap{position:relative;z-index:1}
+.ringwrap{position:relative;display:grid;place-items:center;flex:none}
+.ringwrap .val{position:absolute;font:600 15px var(--display)}
+.sec-head{display:flex;align-items:center;gap:8px;margin-bottom:14px}
+.sec-head h3{font-size:19px}
+.count{min-width:22px;height:22px;padding:0 6px;border-radius:999px;background:var(--violet-soft);color:var(--violet);font:600 12px/22px var(--display);text-align:center}
+.sec-head .link{margin-left:auto;color:var(--violet);font:600 14px var(--display)}
+
+.attn{display:flex;gap:14px;overflow-x:auto;padding:4px 2px 8px;scroll-snap-type:x mandatory;scrollbar-width:none}
+.attn::-webkit-scrollbar{display:none}
+.attn-card{flex:0 0 230px;scroll-snap-align:start;border-radius:20px;padding:18px;text-align:left;display:flex;flex-direction:column;gap:6px;min-height:150px}
+.attn-card .row1{display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--ink-2)}
+.attn-card b{font:600 16px/1.3 var(--display)}
+.attn-card .bar{margin-top:auto}
+.bar{height:6px;border-radius:3px;background:rgba(255,255,255,.75);overflow:hidden}
+.bar span{display:block;height:100%;border-radius:3px;width:0;transition:width .8s cubic-bezier(.2,.7,.2,1)}
+
+.list{display:grid;gap:12px}
+@media (min-width:900px){.list.two{grid-template-columns:1fr 1fr}}
+.item{display:flex;align-items:center;gap:14px;background:var(--card);border-radius:20px;padding:14px 16px;box-shadow:var(--shadow);text-align:left;width:100%;transition:transform .12s}
+.item:hover{transform:translateY(-1px)}
+.thumb{width:48px;height:60px;border-radius:10px;flex:none;position:relative;overflow:hidden}
+.thumb::after{content:"";position:absolute;inset:5px;border-radius:6px;border:2px solid rgba(255,255,255,.7)}
+.item .meta{flex:1;min-width:0}
+.item .meta b{display:block;font:600 15px/1.3 var(--display);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .meta span{font-size:13px;color:var(--ink-2)}
+.chip{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;border-radius:8px;font:600 12px var(--display);white-space:nowrap}
+.chip i{width:6px;height:6px;border-radius:50%;background:currentColor}
+
+/* Filters */
+.filters{display:flex;gap:10px;overflow-x:auto;padding-bottom:4px;margin-bottom:18px;scrollbar-width:none}
+.filter{height:40px;padding:0 18px;border-radius:12px;background:var(--violet-soft);color:var(--violet);font:500 14px var(--display);white-space:nowrap}
+.filter.on{background:var(--violet);color:#fff}
+
+/* ---------- Scan ---------- */
+.scan{text-align:center;max-width:460px;margin:0 auto}
+.radar{position:relative;width:250px;height:250px;margin:12px auto 26px}
+.radar .r{position:absolute;border-radius:50%;background:rgba(95,51,225,.07)}
+.radar .r1{inset:0}.radar .r2{inset:30px;background:rgba(95,51,225,.09)}.radar .r3{inset:60px;background:rgba(95,51,225,.12)}
+.radar .core{position:absolute;inset:88px;border-radius:50%;background:var(--violet);display:grid;place-items:center;color:#fff;box-shadow:0 14px 30px -10px rgba(95,51,225,.8)}
+.radar .wave{position:absolute;inset:88px;border-radius:50%;border:3px solid var(--violet);opacity:0}
+.radar.on .wave{animation:wave 1.8s ease-out infinite}
+.radar.on .wave:nth-of-type(2){animation-delay:.6s}
+.radar.on .wave:nth-of-type(3){animation-delay:1.2s}
+.radar.fail .core{background:var(--red)}
+.radar.fail .wave{border-color:var(--red)}
+@keyframes wave{0%{inset:88px;opacity:.9}100%{inset:-10px;opacity:0}}
+.scan p.lead{color:var(--ink-2);margin:10px auto 24px;max-width:34ch}
+.scan-status{min-height:22px;margin-top:14px;font-size:14px;font-weight:600;color:var(--violet)}
+.scan-status.warn{color:var(--amber)}
+.demo{margin-top:30px;text-align:left}
+.demo h3{font-size:15px;margin-bottom:10px}
+.demo-opt{display:flex;align-items:center;gap:12px;width:100%;padding:14px;border-radius:16px;background:var(--card);box-shadow:var(--shadow);margin-bottom:10px;text-align:left}
+.demo-opt b{display:block;font:600 15px var(--display)}
+.demo-opt span{font-size:13px;color:var(--ink-2)}
+.demo-opt .go{margin-left:auto;color:var(--ink-2)}
+
+/* ---------- Slab detail ---------- */
+.detail{display:grid;gap:20px;grid-template-columns:minmax(0,1fr)}
+@media (min-width:900px){.detail{grid-template-columns:340px minmax(0,1fr);align-items:start}.detail .side{position:sticky;top:20px}}
+.status{border-radius:20px;padding:18px;display:flex;gap:14px;align-items:flex-start}
+.status .badge-ic{width:42px;height:42px;border-radius:14px;flex:none;background:rgba(255,255,255,.7)}
+.status b{display:block;font:600 17px/1.3 var(--display)}
+.status p{font-size:14px;margin-top:3px;color:var(--ink);opacity:.78}
+.slab{background:var(--card);border-radius:24px;padding:14px;box-shadow:var(--shadow);position:relative;margin-top:16px}
+.slab .lab{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:12px 14px;border-radius:14px;background:var(--bg)}
+.slab .lab small{display:block;font-size:12px;color:var(--ink-2)}
+.slab .lab strong{font:600 14px/1.3 var(--display)}
+.slab .lab .g{font:700 30px/1 var(--display);color:var(--violet)}
+.slab .win{margin-top:12px;aspect-ratio:3/4;border-radius:16px;position:relative;overflow:hidden}
+.slab .win::before{content:"";position:absolute;inset:14px;border-radius:10px;border:3px solid rgba(255,255,255,.75)}
+.slab .win::after{content:"";position:absolute;left:28px;right:28px;top:40px;height:40%;border-radius:8px;background:rgba(255,255,255,.28)}
+.slab .chiprow{display:flex;justify-content:center;align-items:center;gap:8px;padding:12px 0 2px;font-size:12px;color:var(--ink-2)}
+.slab .chiprow i{width:8px;height:8px;border-radius:50%}
+.crack{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:2}
+
+.card{background:var(--card);border-radius:24px;padding:22px;box-shadow:var(--shadow)}
+.title h2{margin-bottom:4px}
+.grade{display:flex;align-items:center;gap:18px;margin:20px 0 22px}
+.grade .num{font:700 52px/1 var(--display);letter-spacing:-.04em;color:var(--violet)}
+.grade .word b{display:block;font:600 18px var(--display)}
+.subs{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.sub{background:var(--bg);border-radius:16px;padding:14px}
+.sub .hd{display:flex;justify-content:space-between;margin-bottom:10px;font-size:14px}
+.sub .hd b{font:600 15px var(--display)}
+.sub .bar{background:#E4E0F4}
+.macros{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.macro figure{position:relative;height:150px;border-radius:16px;overflow:hidden;cursor:zoom-in;touch-action:none}
+.macro figcaption{margin-top:8px;font-size:13px;display:flex;justify-content:space-between;gap:8px}
+.tex{position:absolute;inset:0}
+.tex.surface{background:
+  url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .4 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
+  repeating-linear-gradient(60deg,rgba(255,255,255,.12) 0 2px,transparent 2px 8px),
+  linear-gradient(135deg,#FFB36B,#FF6F91 50%,#9B6BFF)}
+.tex.edges{background:
+  url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.02 .9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .45 0 0 0 0 .4 0 0 0 .35 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
+  linear-gradient(90deg,#F2EEE4 0 40%,#E8C66A 40% 50%,#FFFFFF 50%)}
+.tex .seam{position:absolute;top:0;bottom:0;left:64%;width:3px;background:var(--red);box-shadow:0 0 8px var(--red)}
+.lens{position:absolute;width:110px;height:110px;border-radius:50%;overflow:hidden;border:3px solid #fff;box-shadow:0 10px 24px rgba(28,26,46,.35);pointer-events:none;opacity:0;transform:translate(-50%,-50%);transition:opacity .12s}
+.macro figure:hover .lens,.macro figure.touching .lens{opacity:1}
+.lens .zoom{position:absolute;left:0;top:0;transform-origin:0 0}
+.rows{margin-top:6px}
+.kv{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+.kv:last-child{border-bottom:0}
+.kv dt{width:150px;flex:none;font-size:14px;color:var(--ink-2)}
+.kv dd{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.copy{height:30px;padding:0 12px;border-radius:9px;background:var(--violet-soft);color:var(--violet);font:600 12px var(--display);flex:none}
+@media (max-width:520px){.kv{flex-wrap:wrap;gap:4px 12px}.kv dt{width:100%}}
+.timer{display:inline-flex;align-items:center;gap:8px;font:600 14px var(--display);color:var(--violet)}
+.timer.low{color:var(--amber)}
+.timer.out{color:var(--red)}
+.stack{display:grid;gap:20px}
+
+/* Activity */
+.event{display:flex;gap:14px;align-items:center;background:var(--card);border-radius:18px;padding:14px 16px;box-shadow:var(--shadow)}
+.event .badge-ic{width:40px;height:40px;border-radius:13px;flex:none}
+.event b{display:block;font:600 15px/1.3 var(--display)}
+.event span{font-size:13px;color:var(--ink-2)}
+.event time{margin-left:auto;font-size:12px;color:var(--ink-2);white-space:nowrap}
+
+/* Profile */
+.profile{max-width:560px;margin:0 auto;display:grid;gap:16px}
+.me{display:flex;align-items:center;gap:16px}
+.me .avatar{width:60px;height:60px;font-size:22px}
+.setting{display:flex;align-items:center;gap:14px;padding:16px 0;border-bottom:1px solid var(--line)}
+.setting:last-child{border-bottom:0}
+.setting div{flex:1}
+.setting b{display:block;font:600 15px var(--display)}
+.setting span{font-size:13px;color:var(--ink-2)}
+.switch{position:relative;width:48px;height:28px;flex:none}
+.switch input{position:absolute;opacity:0;inset:0;cursor:pointer}
+.switch i{position:absolute;inset:0;border-radius:999px;background:#DDD8EF;transition:background .15s}
+.switch i::after{content:"";position:absolute;left:3px;top:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 2px 4px rgba(0,0,0,.15);transition:transform .15s}
+.switch input:checked+i{background:var(--violet)}
+.switch input:checked+i::after{transform:translateX(20px)}
+.switch input:focus-visible+i{outline:3px solid rgba(95,51,225,.45);outline-offset:2px}
+
+/* Tab bar */
+.tabbar{position:fixed;left:50%;transform:translateX(-50%);bottom:0;width:100%;max-width:560px;height:calc(76px + env(safe-area-inset-bottom,0px));padding-bottom:env(safe-area-inset-bottom,0px);
+  background:rgba(238,233,255,.92);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-radius:24px 24px 0 0;display:flex;align-items:center;justify-content:space-around;z-index:10}
+@media (min-width:900px){.tabbar{bottom:20px;border-radius:24px;max-width:460px;height:76px;padding-bottom:0;box-shadow:var(--shadow)}}
+.tab{width:56px;height:56px;display:grid;place-items:center;border-radius:16px;color:#A89BD9;transition:color .15s}
+.tab.on{color:var(--violet)}
+.tab span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.fab{width:62px;height:62px;border-radius:50%;background:var(--violet);color:#fff;display:grid;place-items:center;margin-top:-34px;box-shadow:0 14px 26px -8px rgba(95,51,225,.75);border:5px solid var(--bg)}
+
+/* Replay dialog */
+#replay{text-align:center}
+#replay .in{padding:30px 26px 26px}
+#replay .badge-ic{width:60px;height:60px;border-radius:20px;margin:0 auto 16px;background:var(--red-soft);color:var(--red)}
+#replay h2{color:var(--ink)}
+#replay p{color:var(--ink-2);font-size:14.5px;margin:8px auto 0;max-width:34ch}
+.counters{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center;margin:22px 0;background:var(--bg);border-radius:18px;padding:18px}
+.counters b{display:block;font:700 38px/1 var(--display)}
+.counters small{font-size:13px;color:var(--ink-2)}
+.counters .bad b{color:var(--red)}
+.counters .op{font:600 20px var(--display);color:var(--ink-2)}
+#replay .code{font:500 11.5px var(--mono);color:var(--ink-2);margin-bottom:20px;word-break:break-word}
+#replay .acts{display:grid;gap:10px}
+
+.toast{position:fixed;left:50%;top:calc(16px + env(safe-area-inset-top,0px));transform:translate(-50%,-160%);background:var(--ink);color:#fff;padding:12px 18px;border-radius:14px;font-size:14px;z-index:50;transition:transform .25s;max-width:calc(100% - 32px)}
+.toast.show{transform:translate(-50%,0)}
+
+.view-enter{animation:enter .28s ease-out}
+@keyframes enter{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<!-- ============ SIGN IN ============ -->
+<section id="auth" aria-labelledby="auth-title">
+  <div class="auth-inner">
+    <div class="hero-art" aria-hidden="true">
+      <div class="art-slab"><div class="lab"><div style="width:60%"><i style="width:100%"></i><i style="width:60%;margin-top:6px"></i></div><b>10</b></div><div class="win"></div></div>
+      <div class="float f1"><span class="badge-ic" style="background:var(--mint-soft);color:var(--mint)" data-icon="check"></span>Sealed</div>
+      <div class="float f2"><span class="badge-ic" style="background:var(--violet-soft);color:var(--violet)" data-icon="nfc"></span>Tap verified</div>
+      <div class="float f3"><span class="badge-ic" style="background:var(--peach-soft);color:var(--peach)" data-icon="chain"></span>On-chain</div>
+      <span class="dot" style="background:#7FD8A8;right:22%;top:16px"></span>
+      <span class="dot" style="background:#B6A4FF;left:24%;top:30px;width:7px;height:7px"></span>
+      <span class="dot" style="background:#FFC07A;right:12%;bottom:50px;width:8px;height:8px"></span>
+      <span class="dot" style="background:#8CC8FF;left:2%;top:210px;width:6px;height:6px"></span>
+    </div>
+    <h1 id="auth-title">Know your slab<br>is the real one</h1>
+    <p>Tap any SlabLock slab with your phone to check its grade, its seal and its full history.</p>
+    <button class="btn btn-block g-btn" id="google-btn"><span data-icon="user"></span><span id="google-label">Continue with Google</span></button>
+    <div class="auth-note">Demo sign-in. Nothing leaves this page.</div>
+  </div>
+</section>
+
+<dialog id="chooser" aria-labelledby="chooser-title">
+  <div class="acct-head"><h2 id="chooser-title">Choose an account</h2><p>to continue to SlabLock</p></div>
+  <button class="acct" data-account="0"><span class="avatar" style="background:var(--violet)">AT</span><div><b>Alex Tan</b><span>alex.tan@gmail.com</span></div></button>
+  <button class="acct" data-account="1"><span class="avatar" style="background:var(--peach)">DC</span><div><b>Demo Collector</b><span>collector.demo@gmail.com</span></div></button>
+  <button class="acct" value="cancel" id="chooser-cancel"><span class="avatar" style="background:var(--line);color:var(--ink-2)" data-icon="x"></span><div><b>Cancel</b><span>Go back to sign in</span></div></button>
+  <div class="acct-foot">This is a mock Google sign-in for the prototype. A real build would use Google’s official sign-in button and OAuth flow.</div>
+</dialog>
+
+<!-- ============ APP ============ -->
+<div id="app" hidden>
+  <main class="wrap" id="view"></main>
+  <nav class="tabbar" aria-label="Main">
+    <button class="tab" data-tab="home"><span>Home</span><i data-icon="home"></i></button>
+    <button class="tab" data-tab="collection"><span>Collection</span><i data-icon="grid"></i></button>
+    <button class="fab" data-tab="scan" aria-label="Scan a slab"><i data-icon="nfc"></i></button>
+    <button class="tab" data-tab="activity"><span>Activity</span><i data-icon="activity"></i></button>
+    <button class="tab" data-tab="profile"><span>Profile</span><i data-icon="user"></i></button>
+  </nav>
+</div>
+
+<dialog id="replay" aria-labelledby="replay-title">
+  <div class="in">
+    <div class="badge-ic" data-icon="shieldx"></div>
+    <h2 id="replay-title">Tap rejected</h2>
+    <p>This tap reused an old chip reading. A real chip counts up every time it’s tapped, so this tag was likely cloned or an old scan link was copied.</p>
+    <div class="counters">
+      <div class="bad"><b id="ctr-in">1</b><small>This tap</small></div>
+      <div class="op">≤</div>
+      <div><b id="ctr-last">5</b><small>Last accepted</small></div>
+    </div>
+    <div class="code" id="replay-code"></div>
+    <div class="acts">
+      <button class="btn btn-primary btn-block" id="replay-again">Scan again</button>
+      <button class="btn btn-soft btn-block" id="replay-close">Close</button>
+    </div>
+  </div>
+</dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+/* ================= Icons ================= */
+const I = {
+  home:'<path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1z"/>',
+  grid:'<rect x="4" y="4" width="7" height="9" rx="2"/><rect x="13" y="4" width="7" height="5" rx="2"/><rect x="13" y="11" width="7" height="9" rx="2"/><rect x="4" y="15" width="7" height="5" rx="2"/>',
+  activity:'<path d="M4 12h3.5l2.5-6 4 12 2.5-6H20"/>',
+  user:'<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.8-3.6 3.6-5.5 7-5.5s6.2 1.9 7 5.5"/>',
+  nfc:'<path d="M8 8.5a5 5 0 0 1 0 7M11.5 6a9 9 0 0 1 0 12M15 3.8a13 13 0 0 1 0 16.4"/>',
+  bell:'<path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15zM10 20.5h4"/>',
+  back:'<path d="M14.5 6 8.5 12l6 6"/>',
+  chev:'<path d="M9.5 6l6 6-6 6"/>',
+  check:'<path d="M5.5 12.5 10 17l8.5-9.5"/>',
+  shield:'<path d="M12 3.5 19 6v5.5c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6z"/><path d="M8.8 12.2 11 14.4l4.3-4.6"/>',
+  shieldx:'<path d="M12 3.5 19 6v5.5c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6z"/><path d="M9.5 9.5l5 5M14.5 9.5l-5 5"/>',
+  crack:'<path d="M12 3.5 19 6v5.5c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6z"/><path d="M13 7l-2.5 4 3 1.5L11 17"/>',
+  clock:'<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+  chain:'<path d="M10 14a4 4 0 0 0 5.6 0l2.8-2.8a4 4 0 0 0-5.6-5.6L11.5 7M14 10a4 4 0 0 0-5.6 0l-2.8 2.8a4 4 0 0 0 5.6 5.6l1.3-1.3"/>',
+  x:'<path d="M7 7l10 10M17 7 7 17"/>',
+  logout:'<path d="M14 5h4a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-4M10 16l-4-4 4-4M6 12h9"/>'
+};
+const icon = (n,s=22,w=2) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[n]}</svg>`;
+const hydrateIcons = root => root.querySelectorAll("[data-icon]").forEach(el=>{ if(!el.dataset.done){ el.innerHTML = icon(el.dataset.icon, el.closest(".tab,.fab")?24:18); el.dataset.done=1; }});
+
+/* ================= Data (mirrors VerifiedCertificateData) ================= */
+const CLIENT="0x70997970C51812dc3A010C7d01b50e0d17dc79C8", ISSUER="0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
+const API="http://localhost:3000/api/v1/nfc/verify";
+
+const SLABS = [
+  {key:"charizard", tokenId:1, tagUid:"04A1B2C3D4E501", readCounter:11, certId:"CERT-PKMN-2026-0001",
+   cardName:"1st Edition Shadowless Holo Charizard #4", short:"Charizard #4", cardSet:"1999 Pokémon Base Set",
+   overallGrade:10.0, subGrades:{centering:10.0,surface:10.0,corners:10.0,edges:10.0},
+   ipfsMetadataCid:"QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco", onChainState:"SEALED",
+   art:"linear-gradient(150deg,#FFB36B,#FF6F91 55%,#9B6BFF)", tone:"peach", checked:"2 hours ago"},
+  {key:"pikachu", tokenId:2, tagUid:"04A1B2C3D4E502", readCounter:5, certId:"CERT-PKMN-2026-0002",
+   cardName:"1st Edition Shadowless Pikachu #58", short:"Pikachu #58", cardSet:"1999 Pokémon Base Set",
+   overallGrade:9.5, subGrades:{centering:9.5,surface:9.5,corners:10.0,edges:9.0},
+   ipfsMetadataCid:"QmT78zSuBmuS4z925WZfrqQ1qHaJ56DQaTfyMUF7F8ff5o", onChainState:"UNSEALED",
+   art:"linear-gradient(150deg,#FFE36B,#FFB347 60%,#FF7D53)", tone:"pink", checked:"Yesterday"},
+  {key:"umbreon", tokenId:3, tagUid:"04A1B2C3D4E503", readCounter:3, certId:"CERT-PKMN-2026-0003",
+   cardName:"Umbreon VMAX Alternate Art #215", short:"Umbreon VMAX", cardSet:"2021 Evolving Skies",
+   overallGrade:10.0, subGrades:{centering:10.0,surface:10.0,corners:10.0,edges:10.0},
+   ipfsMetadataCid:"QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG", onChainState:"SEALED",
+   art:"linear-gradient(150deg,#3E4B8F,#5F33E1 55%,#FFD36B)", tone:"violet", checked:"3 days ago"},
+  {key:"illustrator", tokenId:4, tagUid:"04A1B2C3D4E504", readCounter:8, certId:"CERT-PKMN-2026-0004",
+   cardName:"Pikachu Illustrator Promo", short:"Illustrator Promo", cardSet:"1998 CoroCoro Promo",
+   overallGrade:9.0, subGrades:{centering:9.0,surface:9.5,corners:9.0,edges:9.0},
+   ipfsMetadataCid:"QmSnuWmxptJZdLJpKRarxBMS2Ju2oANVrgbr2xWbie9b2D", onChainState:"IN_TRANSIT",
+   art:"linear-gradient(150deg,#8CC8FF,#0087FF 60%,#5F33E1)", tone:"sky", checked:"Today"}
+];
+const byKey = k => SLABS.find(s=>s.key===k);
+
+const STATE = {
+  SEALED:    {label:"Sealed",     color:"var(--mint)",  soft:"var(--mint-soft)",  icon:"shield", title:"Sealed and intact", text:"The chip gave a fresh signature and this case has never been opened."},
+  IN_TRANSIT:{label:"In transit", color:"var(--amber)", soft:"var(--amber-soft)", icon:"clock",  title:"Transfer in progress", text:"Waiting for the new owner to tap the slab within 120 seconds."},
+  MINTED:    {label:"Not sealed yet", color:"var(--sky)", soft:"var(--sky-soft)", icon:"clock",  title:"Awaiting encapsulation", text:"The record exists, but the card isn’t in its case yet."},
+  UNSEALED:  {label:"Case breached", color:"var(--red)", soft:"var(--red-soft)",  icon:"crack",  title:"Case breached. Do not buy as sealed.", text:"The tamper loop was broken. This record is locked for good, and the card inside may not be the graded one."},
+  VOID:      {label:"Revoked",    color:"var(--red)",   soft:"var(--red-soft)",   icon:"crack",  title:"Certificate revoked", text:"The grading authority voided this certificate. Treat the slab as ungraded."}
+};
+const gradeWord = g => g>=10?"Gem Mint":g>=9.5?"Mint+":g>=9?"Mint":"Near Mint";
+const fmt = g => g.toFixed(1);
+const short = (s,a=8,b=6) => s.length>a+b+1 ? s.slice(0,a)+"…"+s.slice(-b) : s;
+const esc = s => String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+const SCENARIOS = {
+  VALID_CHARIZARD_SEALED:{label:"Charizard, sealed", sub:"A genuine tap on an intact slab", tone:"mint", payload:{piccData:"SIM:04A1B2C3D4E501:11",cmac:"8E54A92B1C77F43D",clientAddress:CLIENT}},
+  COMPROMISED_PIKACHU_UNSEALED:{label:"Pikachu, case breached", sub:"A real chip on an opened case", tone:"red", payload:{piccData:"SIM:04A1B2C3D4E502:12",cmac:"3B19C0E7A25D6F41",clientAddress:CLIENT}},
+  REPLAY_ATTACK:{label:"Replay attack", sub:"A copied scan with an old counter", tone:"amber", payload:{piccData:"SIM:04A1B2C3D4E502:1",cmac:"3B19C0E7A25D6F41",clientAddress:CLIENT}}
+};
+
+function fakeSig(){
+  const h=n=>Array.from(crypto.getRandomValues(new Uint8Array(n)),b=>b.toString(16).padStart(2,"0")).join("");
+  const r="0x"+h(32), s="0x"+h(32), v=27+(Math.random()>.5?1:0);
+  return {r,s,v,signature:"0x"+r.slice(2)+s.slice(2)+v.toString(16),deadline:Math.floor(Date.now()/1000)+120};
+}
+function mockVerify(scn){
+  if(scn==="REPLAY_ATTACK") return {success:false,error:{code:"ERR_REPLAY_ATTACK",message:"Read counter 1 is less than or equal to last authenticated counter (5)."}};
+  const s = byKey(scn==="VALID_CHARIZARD_SEALED"?"charizard":"pikachu");
+  return {verified:true, tagUid:s.tagUid, readCounter:s.readCounter+1, tokenId:s.tokenId, certId:s.certId, cardName:s.cardName, cardSet:s.cardSet,
+    overallGrade:s.overallGrade, subGrades:{...s.subGrades}, ipfsMetadataCid:s.ipfsMetadataCid, onChainState:s.onChainState,
+    ownerAddress:CLIENT, issuerAddress:ISSUER, claimSignature:fakeSig(), nfcAttestationSignature:fakeSig()};
+}
+
+/* ================= State ================= */
+const app = {user:null, tab:"home", filter:"all", live:false, lastScan:null, busy:false};
+const EVENTS = [
+  {tone:"mint",  icon:"shield", title:"Charizard #4 verified", sub:"Sealed, counter 11", time:"2 h ago"},
+  {tone:"amber", icon:"clock",  title:"Transfer started", sub:"Illustrator Promo to 0x3C44…93BC", time:"Today"},
+  {tone:"red",   icon:"crack",  title:"Pikachu #58 flagged", sub:"Case breached, record locked", time:"Yesterday"},
+  {tone:"mint",  icon:"shield", title:"Umbreon VMAX verified", sub:"Sealed, counter 3", time:"3 days ago"}
+];
+let timer=null;
+
+/* ================= Helpers ================= */
+const $ = s => document.querySelector(s);
+function ring(pct,color,size=64,stroke=6,label="",track="currentColor"){
+  const r=(size-stroke)/2, c=2*Math.PI*r;
+  return `<div class="ringwrap" style="width:${size}px;height:${size}px;color:${color}">
+    <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true">
+      <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="${track}" stroke-opacity=".18" stroke-width="${stroke}"/>
+      <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="currentColor" stroke-width="${stroke}" stroke-linecap="round"
+        stroke-dasharray="${c}" stroke-dashoffset="${c*(1-pct)}" transform="rotate(-90 ${size/2} ${size/2})"/>
+    </svg><span class="val" style="color:inherit">${label}</span></div>`;
+}
+const stateChip = st => `<span class="chip" style="background:${STATE[st].soft};color:${STATE[st].color}"><i></i>${STATE[st].label}</span>`;
+function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");clearTimeout(toast.t);toast.t=setTimeout(()=>t.classList.remove("show"),3000)}
+function animateBars(){requestAnimationFrame(()=>requestAnimationFrame(()=>document.querySelectorAll(".bar span[data-w]").forEach(b=>b.style.width=b.dataset.w+"%")))}
+function slabItem(s){
+  return `<button class="item" data-open="${s.key}">
+    <span class="thumb" style="background:${s.art}"></span>
+    <span class="meta"><b>${esc(s.short)}</b><span>${esc(s.cardSet)}</span><br>${stateChip(s.onChainState)}</span>
+    ${ring(s.overallGrade/10, s.onChainState==="SEALED"?"var(--violet)":STATE[s.onChainState].color, 52, 5, fmt(s.overallGrade))}
+  </button>`;
+}
+
+/* ================= Views ================= */
+const VIEWS = {
+  home(){
+    const sealed = SLABS.filter(s=>s.onChainState==="SEALED").length, total=SLABS.length;
+    const attn = SLABS.filter(s=>s.onChainState!=="SEALED");
+    const first = app.user.name.split(" ")[0];
+    return `
+    <header class="top">
+      <span class="avatar" style="background:${app.user.color};width:48px;height:48px;font-size:17px">${app.user.initials}</span>
+      <div class="hello"><small>Hello!</small><b>${esc(first)}</b></div>
+      <button class="icon-btn bell" aria-label="Notifications">${icon("bell")}</button>
+    </header>
+    <div class="dash">
+      <div class="hero">
+        <div class="txt"><h3>${sealed} of ${total} slabs in your vault are sealed and verified</h3>
+          <button class="btn btn-light" data-tab="scan">Scan a slab</button></div>
+        ${ring(sealed/total,"#fff",92,9,Math.round(sealed/total*100)+"%","#fff")}
+      </div>
+      <section>
+        <div class="sec-head"><h3>Needs attention</h3><span class="count">${attn.length}</span></div>
+        <div class="attn">${attn.map(s=>{
+          const st=STATE[s.onChainState], pct = s.onChainState==="IN_TRANSIT"?55:100;
+          return `<button class="attn-card" data-open="${s.key}" style="background:${st.soft}">
+            <span class="row1"><span>${st.label}</span><span class="badge-ic" style="background:#fff;color:${st.color}">${icon(st.icon,16)}</span></span>
+            <b>${esc(s.short)}</b><span class="t-sm muted">${s.onChainState==="IN_TRANSIT"?"Recipient tap pending":"Locked, do not buy as sealed"}</span>
+            <span class="bar"><span data-w="${pct}" style="background:${st.color}"></span></span>
+          </button>`}).join("")}</div>
+      </section>
+      <section class="span">
+        <div class="sec-head"><h3>Your collection</h3><span class="count">${total}</span><button class="link" data-tab="collection">See all</button></div>
+        <div class="list two">${SLABS.map(slabItem).join("")}</div>
+      </section>
+    </div>`;
+  },
+  collection(){
+    const F={all:"All",SEALED:"Sealed",IN_TRANSIT:"In transit",UNSEALED:"Flagged"};
+    const list = SLABS.filter(s=>app.filter==="all"||s.onChainState===app.filter);
+    return `
+    <div class="page-top"><span class="spacer"></span><h2>Collection</h2><button class="icon-btn" data-tab="scan" aria-label="Scan a slab">${icon("nfc")}</button></div>
+    <div class="filters" role="group" aria-label="Filter">${Object.entries(F).map(([k,v])=>`<button class="filter ${app.filter===k?"on":""}" data-filter="${k}" aria-pressed="${app.filter===k}">${v}</button>`).join("")}</div>
+    <div class="list two">${list.length?list.map(slabItem).join(""):`<p class="muted">No slabs in this state. Scan a slab to add it.</p>`}</div>`;
+  },
+  scan(){
+    return `
+    <div class="page-top"><button class="icon-btn" data-tab="home" aria-label="Back">${icon("back")}</button><h2>Scan a slab</h2><span class="spacer"></span></div>
+    <div class="scan">
+      <div class="radar" id="radar" aria-hidden="true"><div class="r r1"></div><div class="r r2"></div><div class="r r3"></div><div class="wave"></div><div class="wave"></div><div class="wave"></div><div class="core">${icon("nfc",34,2.2)}</div></div>
+      <h1 style="font-size:26px">Hold your phone near the chip</h1>
+      <p class="lead">Keep it within 4 cm of the base of the slab until you feel a buzz.</p>
+      <button class="btn btn-primary btn-block" id="start">Start scan</button>
+      <div class="scan-status" id="status" role="status" aria-live="polite"></div>
+      <div class="demo">
+        <h3>No chip nearby? Try a demo tap</h3>
+        ${Object.entries(SCENARIOS).map(([k,s])=>`<button class="demo-opt" data-scenario="${k}">
+          <span class="badge-ic" style="width:40px;height:40px;border-radius:13px;background:var(--${s.tone}-soft);color:var(--${s.tone})">${icon(k==="REPLAY_ATTACK"?"shieldx":k.includes("SEALED")&&!k.includes("UN")?"shield":"crack",20)}</span>
+          <span><b>${s.label}</b><span>${s.sub}</span></span><span class="go">${icon("chev",18)}</span></button>`).join("")}
+      </div>
+    </div>`;
+  },
+  activity(){
+    return `
+    <div class="page-top"><span class="spacer"></span><h2>Activity</h2><span class="spacer"></span></div>
+    <div class="list" style="max-width:640px;margin:0 auto">${EVENTS.map(e=>`<div class="event">
+      <span class="badge-ic" style="background:var(--${e.tone}-soft);color:var(--${e.tone})">${icon(e.icon,20)}</span>
+      <div><b>${esc(e.title)}</b><span>${esc(e.sub)}</span></div><time>${e.time}</time></div>`).join("")}</div>`;
+  },
+  profile(){
+    return `
+    <div class="page-top"><span class="spacer"></span><h2>Profile</h2><span class="spacer"></span></div>
+    <div class="profile">
+      <div class="card me"><span class="avatar" style="background:${app.user.color}">${app.user.initials}</span>
+        <div><h3>${esc(app.user.name)}</h3><div class="t-sm muted">Signed in with Google as ${esc(app.user.email)}</div></div></div>
+      <div class="card">
+        <div class="setting"><div><b>Wallet</b><span class="mono">${short(CLIENT,6,4)}</span></div><button class="copy" data-copy="${CLIENT}">Copy</button></div>
+        <div class="setting"><div><b>Network</b><span>Polygon Amoy testnet</span></div><span class="chip" style="background:var(--mint-soft);color:var(--mint)"><i></i>Connected</span></div>
+        <div class="setting"><div><b>Use local API</b><span>Send demo taps to localhost:3000</span></div>
+          <label class="switch"><input type="checkbox" id="live" ${app.live?"checked":""} aria-label="Use local API"><i></i></label></div>
+      </div>
+      <button class="btn btn-soft btn-block" id="signout">${icon("logout",20)}Sign out</button>
+    </div>`;
+  },
+  slab(){
+    const {data, fresh} = app.detail;
+    const st = STATE[data.onChainState], breached = ["UNSEALED","VOID"].includes(data.onChainState);
+    const base = byKey(SLABS.find(s=>s.tokenId===data.tokenId)?.key) || {art:"linear-gradient(150deg,#B6A4FF,#5F33E1)"};
+    const subs=[["centering","Centering"],["corners","Corners"],["edges","Edges"],["surface","Surface"]];
+    const rows=[["Tag UID",data.tagUid],["Read counter",String(data.readCounter)],["Token ID","#"+data.tokenId],["Certificate",data.certId],
+      ["Metadata","ipfs://"+data.ipfsMetadataCid,1],["Owner",data.ownerAddress||CLIENT,1],["Grading authority",data.issuerAddress||ISSUER,1]];
+    if(fresh) rows.push(["Claim signature",data.claimSignature.signature,1]);
+    return `
+    <div class="page-top"><button class="icon-btn" id="back" aria-label="Back">${icon("back")}</button><h2>Slab details</h2><span class="spacer"></span></div>
+    <div class="detail">
+      <div class="side">
+        <div class="status" style="background:${st.soft}" role="status">
+          <span class="badge-ic" style="color:${st.color}">${icon(st.icon,22)}</span>
+          <div><b style="color:${st.color}">${st.title}</b><p>${st.text}</p></div>
+        </div>
+        <div class="slab">
+          <div class="lab"><div><strong>${esc(data.cardName)}</strong><small>${data.certId}</small></div><span class="g" style="${breached?"color:var(--ink-2)":""}">${data.overallGrade%1?fmt(data.overallGrade):data.overallGrade}</span></div>
+          <div class="win" style="background:${base.art};${breached?"filter:saturate(.6)":""}"></div>
+          <div class="chiprow"><i style="background:${st.color}"></i>NTAG 424 DNA chip</div>
+          ${breached?`<svg class="crack" viewBox="0 0 100 140" preserveAspectRatio="none" aria-hidden="true"><path d="M100 40 L82 50 L88 60 L70 72 L76 82 L58 96" stroke="#E8354F" stroke-width=".9" fill="none"/><path d="M82 50 L94 64 M70 72 L62 64" stroke="#E8354F" stroke-width=".5" fill="none"/></svg>`:""}
+        </div>
+      </div>
+      <div class="stack">
+        <div class="card">
+          <div class="title"><h2>${esc(data.cardName)}</h2><div class="muted">${esc(data.cardSet)}</div></div>
+          <div class="grade"><span class="num">${fmt(data.overallGrade)}</span><div class="word"><b>${gradeWord(data.overallGrade)}</b><span class="t-sm muted">Overall grade</span></div></div>
+          <div class="subs">${subs.map(([k,l])=>{const v=data.subGrades[k];return `<div class="sub"><div class="hd"><span class="muted">${l}</span><b>${fmt(v)}</b></div><div class="bar"><span data-w="${v*10}" style="background:${v>=10?"var(--violet)":"var(--violet-2)"};opacity:${v>=10?1:.7}"></span></div></div>`}).join("")}</div>
+        </div>
+        <div class="card">
+          <div class="sec-head"><h3>Macro photos</h3><span class="t-sm muted" style="margin-left:auto">Hover or drag to zoom</span></div>
+          <div class="macros">
+            <div class="macro"><figure data-loupe><div class="tex surface"></div></figure><figcaption><span>Surface</span><span class="muted">IPFS</span></figcaption></div>
+            <div class="macro"><figure data-loupe><div class="tex edges">${breached?'<div class="seam"></div>':""}</div></figure><figcaption><span>${breached?"Edges, resin seam found":"Edges"}</span><span class="muted">IPFS</span></figcaption></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="sec-head"><h3>Chip and on-chain record</h3>
+            ${fresh?`<span class="timer" id="timer" style="margin-left:auto">${icon("clock",16)}<span></span></span>`:`<span class="t-sm muted" style="margin-left:auto">Last checked ${base.checked||"recently"}</span>`}</div>
+          <dl class="rows">${rows.map(([k,v,c])=>`<div class="kv"><dt>${k}</dt><dd class="mono" title="${esc(v)}">${esc(c?short(v,10,8):v)}</dd>${c?`<button class="copy" data-copy="${esc(v)}">Copy</button>`:""}</div>`).join("")}</dl>
+          ${fresh?"":`<button class="btn btn-soft btn-block" data-tab="scan" style="margin-top:14px">Tap to verify now</button>`}
+        </div>
+      </div>
+    </div>`;
+  }
+};
+
+/* ================= Render & routing ================= */
+function go(tab, opts={}){
+  clearInterval(timer);
+  app.tab = tab;
+  const v=$("#view"); v.innerHTML = VIEWS[tab](); v.classList.remove("view-enter"); void v.offsetWidth; v.classList.add("view-enter");
+  document.querySelectorAll(".tabbar [data-tab]").forEach(b=>{b.classList.toggle("on",b.dataset.tab===tab); b.toggleAttribute("aria-current",b.dataset.tab===tab)});
+  hydrateIcons(document);
+  animateBars();
+  if(tab==="slab"){ setupLoupes(); if(app.detail.fresh){ tick(); timer=setInterval(tick,1000);} }
+  if(!opts.keepScroll) window.scrollTo({top:0});
+}
+function openSlab(key){ app.detail={data:{...byKey(key), ownerAddress:CLIENT, issuerAddress:ISSUER}, fresh:false}; app.from=app.tab; go("slab"); }
+
+function tick(){
+  const el=$("#timer span"); if(!el) return clearInterval(timer);
+  const left=app.detail.data.claimSignature.deadline-Math.floor(Date.now()/1000), t=$("#timer");
+  if(left<=0){ el.textContent="Signature expired"; t.className="timer out"; return clearInterval(timer); }
+  el.textContent=`Valid for ${Math.floor(left/60)}:${String(left%60).padStart(2,"0")}`;
+  t.className="timer"+(left<=20?" low":"");
+}
+
+/* ================= Scan flow ================= */
+async function verify(scn){
+  if(app.busy) return; app.busy=true;
+  const radar=$("#radar"), status=$("#status");
+  radar.classList.remove("fail"); radar.classList.add("on");
+  status.className="scan-status"; status.textContent="Reading chip and checking the record…";
+  const wait=new Promise(r=>setTimeout(r,1300));
+  let data;
+  if(app.live){
+    try{
+      const ctrl=new AbortController(), to=setTimeout(()=>ctrl.abort(),4000);
+      const res=await fetch(API,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(SCENARIOS[scn].payload),signal:ctrl.signal});
+      clearTimeout(to); data=await res.json();
+    }catch{ toast("Couldn’t reach localhost:3000. Showing demo data."); data=mockVerify(scn); }
+  } else data=mockVerify(scn);
+  await wait; app.busy=false;
+  if(app.tab!=="scan") return;
+  if(data.success===false){
+    radar.classList.add("fail"); status.textContent="";
+    setTimeout(()=>radar.classList.remove("on","fail"),900);
+    EVENTS.unshift({tone:"red",icon:"shieldx",title:"Replay attack blocked",sub:"Old counter on tag 04A1…E502",time:"Just now"});
+    const m=/counter (\d+).*\((\d+)\)/i.exec(data.error.message||"");
+    $("#ctr-in").textContent=m?m[1]:"?"; $("#ctr-last").textContent=m?m[2]:"?";
+    $("#replay-code").textContent=data.error.code;
+    $("#replay").showModal(); return;
+  }
+  const s=SLABS.find(x=>x.tokenId===data.tokenId); if(s) s.readCounter=data.readCounter;
+  EVENTS.unshift({tone:data.onChainState==="SEALED"?"mint":"red", icon:data.onChainState==="SEALED"?"shield":"crack",
+    title:`${s?s.short:data.cardName} ${data.onChainState==="SEALED"?"verified":"flagged"}`, sub:`${STATE[data.onChainState].label}, counter ${data.readCounter}`, time:"Just now"});
+  app.detail={data,fresh:true}; app.from="scan"; go("slab");
+}
+
+/* ================= Loupe ================= */
+function setupLoupes(){
+  const Z=3, R=55;
+  document.querySelectorAll("[data-loupe]").forEach(fig=>{
+    const tex=fig.querySelector(".tex"), lens=document.createElement("div"), zoom=tex.cloneNode(true);
+    lens.className="lens"; zoom.classList.add("zoom"); lens.append(zoom); fig.append(lens);
+    const move=e=>{const r=fig.getBoundingClientRect(), x=Math.max(0,Math.min(r.width,e.clientX-r.left)), y=Math.max(0,Math.min(r.height,e.clientY-r.top));
+      zoom.style.width=r.width+"px"; zoom.style.height=r.height+"px"; lens.style.left=x+"px"; lens.style.top=y+"px";
+      zoom.style.transform=`translate(${R-x*Z}px,${R-y*Z}px) scale(${Z})`;};
+    fig.addEventListener("pointermove",move);
+    fig.addEventListener("pointerdown",e=>{fig.classList.add("touching");move(e)});
+    ["pointerup","pointerleave","pointercancel"].forEach(t=>fig.addEventListener(t,()=>fig.classList.remove("touching")));
+  });
+}
+
+/* ================= Auth ================= */
+const ACCOUNTS=[{name:"Alex Tan",email:"alex.tan@gmail.com",initials:"AT",color:"var(--violet)"},{name:"Demo Collector",email:"collector.demo@gmail.com",initials:"DC",color:"var(--peach)"}];
+$("#google-btn").addEventListener("click",()=>$("#chooser").showModal());
+$("#chooser-cancel").addEventListener("click",()=>$("#chooser").close());
+document.querySelectorAll("[data-account]").forEach(b=>b.addEventListener("click",()=>{
+  $("#chooser").close();
+  const btn=$("#google-btn"); btn.disabled=true;
+  btn.querySelector("[data-icon]").innerHTML='<span class="spinner"></span>'; $("#google-label").textContent="Signing in…";
+  setTimeout(()=>{
+    app.user=ACCOUNTS[+b.dataset.account];
+    $("#auth").hidden=true; $("#app").hidden=false; go("home");
+    toast(`Signed in as ${app.user.email}`);
+    btn.disabled=false; btn.querySelector("[data-icon]").innerHTML=icon("user",18); $("#google-label").textContent="Continue with Google";
+  },900);
+}));
+
+/* ================= Global events ================= */
+document.addEventListener("click",async e=>{
+  const t=e.target.closest("[data-tab],[data-open],[data-filter],[data-scenario],[data-copy],#start,#back,#signout");
+  if(!t) return;
+  if(t.dataset.tab) return go(t.dataset.tab);
+  if(t.dataset.open) return openSlab(t.dataset.open);
+  if(t.dataset.filter){ app.filter=t.dataset.filter; return go("collection",{keepScroll:true}); }
+  if(t.dataset.scenario) return verify(t.dataset.scenario);
+  if(t.dataset.copy){ try{await navigator.clipboard.writeText(t.dataset.copy);t.textContent="Copied"}catch{t.textContent="Select to copy"} return setTimeout(()=>t.textContent="Copy",1300); }
+  if(t.id==="back") return go(app.from&&app.from!=="slab"?app.from:"home");
+  if(t.id==="signout"){ app.user=null; clearInterval(timer); $("#app").hidden=true; $("#auth").hidden=false; window.scrollTo({top:0}); return; }
+  if(t.id==="start"){
+    if(app.busy) return;
+    const radar=$("#radar"), status=$("#status"); radar.classList.add("on");
+    status.className="scan-status"; status.textContent="Looking for a chip…";
+    setTimeout(()=>{ if(app.busy||app.tab!=="scan") return; radar.classList.remove("on");
+      status.className="scan-status warn"; status.textContent="No chip found. NFC needs the mobile app, so try a demo tap below."; },2600);
+  }
+});
+document.addEventListener("change",e=>{ if(e.target.id==="live"){ app.live=e.target.checked; toast(app.live?"Demo taps will go to localhost:3000":"Using built-in demo data"); }});
+$("#replay-close").addEventListener("click",()=>$("#replay").close());
+$("#replay-again").addEventListener("click",()=>{$("#replay").close(); $("#start")?.click();});
+
+hydrateIcons(document);
+</script>
+</body>
+</html>
