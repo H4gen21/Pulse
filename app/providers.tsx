@@ -59,7 +59,10 @@ function WalletProviders({ children }: { children: ReactNode }) {
 }
 
 export function Providers({ children }: { children: ReactNode }) {
-  const [queryClient] = useState(() => new QueryClient());
+  // One retry, no focus refetch storms: a failing RPC should surface an error, not a request flood.
+  const [queryClient] = useState(
+    () => new QueryClient({ defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } } }),
+  );
 
   return (
     <WagmiProvider config={config}>

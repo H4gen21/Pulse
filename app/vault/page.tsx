@@ -200,7 +200,14 @@ function Dashboard({ owner }: { owner: `0x${string}` }) {
             )}
             <section className="card pad" aria-labelledby="a-h">
               <h2 id="a-h" style={{ fontSize: 20, marginBottom: 6 }}>Activity</h2>
-              <Activity events={events} loading={guard.events.isLoading} failed={guard.events.isError} now={now} />
+              <Activity
+                events={events}
+                loading={guard.events.isPending}
+                failed={guard.events.isError}
+                retrying={guard.events.isFetching}
+                onRetry={() => void guard.events.refetch()}
+                now={now}
+              />
             </section>
           </div>
         </div>
@@ -290,9 +297,20 @@ const EVENT_UI: Record<GuardEvent['name'], [IconName, (e: GuardEvent) => string]
   BeneficiaryTransferFailed: ['alert', (e) => `Transfer of ${formatAmount(e.args.amount as bigint)} ${TOKEN} to ${shortAddr(e.args.wallet as string)} failed. It stayed in your wallet`],
 };
 
-function Activity({ events, loading, failed, now }: { events: GuardEvent[]; loading: boolean; failed: boolean; now: number | null }) {
+/** Loads after the page is on screen (useGuardEvents) and fails on its own: never blocks the dashboard. */
+function Activity({ events, loading, failed, retrying, onRetry, now }: {
+  events: GuardEvent[]; loading: boolean; failed: boolean; retrying: boolean; onRetry: () => void; now: number | null;
+}) {
+  if (failed)
+    return (
+      <div role="status" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 10 }}>
+        <p className="muted small">Couldn’t load activity right now. Your vault status above is read directly from the contract.</p>
+        <button className="btn btn-ghost" type="button" onClick={onRetry} disabled={retrying}>
+          {retrying ? 'Retrying…' : 'Try again'}
+        </button>
+      </div>
+    );
   if (loading) return <p className="muted small" role="status">Loading on-chain activity…</p>;
-  if (failed) return <p className="muted small" role="status">Couldn’t load activity from the RPC. Your vault status above is read directly from the contract.</p>;
   if (events.length === 0) return <p className="muted small">No activity yet.</p>;
   return (
     <ul className="feed">

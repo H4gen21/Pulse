@@ -9,7 +9,12 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? 'github' : 'list',
   use: { baseURL: `http://localhost:${PORT}`, trace: 'retain-on-failure' },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] }, testIgnore: /mobile-nav/ },
+    // Touch taps on real phone profiles (iPhone SE runs WebKit: `pnpm exec playwright install webkit`).
+    { name: 'pixel-7', use: { ...devices['Pixel 7'] }, testMatch: /mobile-nav/ },
+    { name: 'iphone-se', use: { ...devices['iPhone SE'] }, testMatch: /mobile-nav/ },
+  ],
   webServer: {
     command: `pnpm start -p ${PORT}`,
     url: `http://localhost:${PORT}`,

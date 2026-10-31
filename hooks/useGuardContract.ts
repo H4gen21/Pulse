@@ -1,9 +1,10 @@
 'use client';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { usePublicClient, useReadContracts } from 'wagmi';
+import { useReadContracts } from 'wagmi';
 import { chain } from '@/lib/chain';
 import { erc20Abi, guardAbi, GUARD_ADDRESS, USDC_ADDRESS } from '@/lib/contract';
-import { fetchGuardEvents, latestTerminal, withTimestamps } from '@/lib/guard-events';
+import { parseWithBigints, type GuardEventsResponse } from '@/lib/guard-events';
 import { deriveStatus, toGuardConfig, type GuardStatus } from '@/lib/guard-status';
 import { MAX_TIMEOUT_SEC, MIN_TIMEOUT_SEC } from '@/lib/validation';
 
@@ -74,16 +75,31 @@ export function useUsdc(owner?: `0x${string}`) {
   return { balance, allowance, isLoading: reads.isLoading, refetch: reads.refetch };
 }
 
-/** Pulse events for an owner (newest first, with timestamps) and the derived status. */
+/**
+ * Pulse events for an owner (newest first, with timestamps) from GET /api/vault/events. Logs are
+ * read on the server; the browser never calls eth_getLogs. Starts after the first paint so it can
+ * never hold up the page, and fails fast (one retry) into the feed's own error state.
+ */
 export function useGuardEvents(owner?: `0x${string}`) {
-  const client = usePublicClient({ chainId: chain.id });
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   return useQuery({
-    queryKey: ['guard-events', chain.id, owner],
-    enabled: !!owner && !!client,
+    queryKey: ['guard-events', chain.id, owner?.toLowerCase()],
+    enabled: !!owner && mounted,
     staleTime: 15_000,
-    queryFn: async () => {
-      const all = await fetchGuardEvents(client!, owner!);
-      return { latest: latestTerminal(all), events: await withTimestamps(client!, all) };
+    retry: 1,
+    refetchOnWindowFocus: false,
+    queryFn: async ({ signal }): Promise<GuardEventsResponse> => {
+      const res = await fetch(`/api/vault/events?owner=${owner}`, { signal });
+      const text = await res.text();
+      if (!res.ok) {
+        let msg = `Request failed (${res.status})`;
+        try {
+          msg = JSON.parse(text).error ?? msg;
+        } catch {}
+        throw new Error(msg);
+      }
+      return parseWithBigints<GuardEventsResponse>(text);
     },
   });
 }
