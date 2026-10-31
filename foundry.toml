@@ -15,3 +15,7 @@ remappings = [
 
 [fuzz]
 runs = 512
+
+# Foundry loads .env automatically, so `--rpc-url base_sepolia` uses RPC_URL without pasting it.
+[rpc_endpoints]
+base_sepolia = "${RPC_URL}"
