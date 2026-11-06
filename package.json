@@ -51,7 +51,8 @@
   },
   "pnpm": {
     "overrides": {
-      "@solana/kit": "^8.0.0"
+      "@solana/kit": "^8.0.0",
+      "cuer": "0.0.4"
     }
   }
 }
