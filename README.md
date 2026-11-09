@@ -1,6 +1,6 @@
 # Pulse: Automated Non-Custodial Web3 Inheritance Guard
 
-A zero-custody dead man's switch on Base. Funds stay in the owner's wallet. `InheritanceGuard.sol` holds only a capped ERC-20 allowance, and Chainlink Automation distributes it to heirs after a configurable period of inactivity (60–730 days).
+A zero-custody dead man's switch on Base. Funds stay in the owner's wallet. `InheritanceGuard.sol` holds only a capped ERC-20 allowance, and Chainlink Automation distributes it to heirs after a configurable period of inactivity (60–730 days). **Testnet demo on Base Sepolia. Not audited. Do not use real funds.**
 
 ## Quick start
 

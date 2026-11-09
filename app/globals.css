@@ -89,7 +89,7 @@
   }
 
   html {
-    scroll-padding-top: calc(var(--safe-top) + 96px);
+    scroll-padding-top: calc(var(--safe-top) + 128px); /* navbar + testnet banner */
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
   }
@@ -332,6 +332,23 @@
   }
   .net-banner > span {
     flex: 1 1 200px;
+  }
+  :root {
+    --testnet-h: 31px; /* one-line banner height; the sidebar offset below uses it */
+  }
+  /* Neutral, always-on notice above the navbar (components/TestnetBanner.tsx). */
+  .testnet-banner {
+    padding: 6px var(--gutter);
+    padding-left: max(var(--gutter), var(--safe-left));
+    padding-right: max(var(--gutter), var(--safe-right));
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--line);
+    color: var(--ink);
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.4;
+    text-align: center;
+    text-wrap: balance;
   }
   html.staging {
     --staging-h: 31px;
@@ -1312,7 +1329,7 @@
   @media (min-width: 1024px) {
     .layout .side.sticky {
       position: sticky;
-      top: calc(var(--safe-top) + 100px + var(--staging-h, 0px));
+      top: calc(var(--safe-top) + 100px + var(--testnet-h) + var(--staging-h, 0px));
     }
   }
 
@@ -1455,6 +1472,11 @@
     justify-content: space-between;
     gap: 12px;
     align-items: center;
+  }
+  footer.foot .foot-notice {
+    flex-basis: 100%;
+    order: 3;
+    font-weight: 600;
   }
   footer.foot a {
     display: inline-flex;
